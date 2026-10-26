@@ -2,24 +2,41 @@ export type Health = { ok:boolean; service:string; transport:string; faxEnabled:
 export type ServerFax = {id:string;direction:'inbound'|'outbound';status:string;from:string;to:string;
   title:string;filename?:string;pages:number;createdAt:string;failureReason?:string;hasDocument:boolean};
 export type FaxStats = {received:number;sent:number;pending:number;failed:number};
+export type OperatorSession = {authenticated:boolean;expiresAt:string|null};
 const withSlash=(endpoint:string)=>endpoint.trim().replace(/\/$/,'');
+const headersFor=(token:string,extra?:HeadersInit):Headers=>{
+  const h=new Headers(extra);
+  if(token)h.set('Authorization','Bearer '+token);
+  return h;
+};
 const apiCall=async <T>(endpoint:string,token:string,path:string,options:RequestInit={}):Promise<T>=>{
-  const r=await fetch(withSlash(endpoint)+path,{...options,headers:{...options.headers,Authorization:'Bearer '+token},
-    signal:AbortSignal.timeout(20000)});
+  const r=await fetch(withSlash(endpoint)+path,{...options,credentials:'same-origin',
+    headers:headersFor(token,options.headers),signal:AbortSignal.timeout(20000)});
   let j:{error?:string}|null=null;try{j=await r.json();}catch{}
   if(!r.ok)throw Error(j?.error||'API returned HTTP '+r.status);
   return j as T;
 };
 export async function checkApi(endpoint:string):Promise<Health>{
-  const r=await fetch(withSlash(endpoint)+'/healthz',{signal:AbortSignal.timeout(7000)});
+  const r=await fetch(withSlash(endpoint)+'/healthz',{credentials:'same-origin',signal:AbortSignal.timeout(7000)});
   if(!r.ok)throw Error('Server returned HTTP '+r.status);
   return r.json() as Promise<Health>;
 }
-export async function listFaxes(endpoint:string,token:string):Promise<ServerFax[]>{
+export function getSession(endpoint:string):Promise<OperatorSession>{
+  return apiCall<OperatorSession>(endpoint,'','/api/session');
+}
+export function createSession(endpoint:string,token:string):Promise<OperatorSession>{
+  return apiCall<OperatorSession>(endpoint,'','/api/session',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})
+  });
+}
+export function destroySession(endpoint:string):Promise<OperatorSession>{
+  return apiCall<OperatorSession>(endpoint,'','/api/session',{method:'DELETE'});
+}
+export async function listFaxes(endpoint:string,token=''):Promise<ServerFax[]>{
   const result=await apiCall<{items:ServerFax[]}>(endpoint,token,'/api/faxes');
   return result.items;
 }
-export async function getStats(endpoint:string,token:string):Promise<FaxStats>{
+export async function getStats(endpoint:string,token=''):Promise<FaxStats>{
   return apiCall<FaxStats>(endpoint,token,'/api/stats');
 }
 export async function submitFax(endpoint:string,token:string,payload:{
@@ -31,7 +48,7 @@ export async function submitFax(endpoint:string,token:string,payload:{
 }
 export async function downloadFax(endpoint:string,token:string,id:string):Promise<Blob>{
   const r=await fetch(withSlash(endpoint)+'/api/faxes/'+encodeURIComponent(id)+'/document',{
-    headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
+    headers:headersFor(token),credentials:'same-origin',signal:AbortSignal.timeout(20000)});
   if(!r.ok)throw Error('Document unavailable (HTTP '+r.status+')');
   return r.blob();
 }
