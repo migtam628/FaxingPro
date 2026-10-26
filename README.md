@@ -21,6 +21,7 @@ Premium fax management preview for Windows, macOS, Linux, and the web.
 ## Contents
 
 - [Current features](#current-features)
+- [Public GitHub Pages preview](#public-website--github-pages)
 - [Desktop installation](#a-install-a-desktop-release-recommended-for-a-quick-preview)
 - [Local web development](#b-run-the-web-ui-locally)
 - [Docker hosting](#c-host-the-web-application-and-api-yourself-docker)
@@ -46,6 +47,25 @@ Premium fax management preview for Windows, macOS, Linux, and the web.
 | Actual fax calls and SIP/T.38 | ❌ Not yet | FreeSWITCH / SpanDSP and carrier connectivity remain to be built |
 | User login, persistent documents, encrypted storage | ❌ Not yet | Production backend is planned |
 | Delivery confirmations | ❌ Not yet | Preview statuses do not indicate real deliveries |
+
+## Public website — GitHub Pages
+
+The ATLAS web preview can be published at **https://migtam628.github.io/FaxingPro/** through the dedicated [**Deploy ATLAS Website to GitHub Pages**](https://github.com/migtam628/FaxingPro/actions/workflows/pages.yml) workflow.
+
+**One-time GitHub setup:**
+
+1. Open [**FaxingPro → Settings → Pages**](https://github.com/migtam628/FaxingPro/settings/pages).
+2. Under **Build and deployment → Source**, select **GitHub Actions**. Don't select **Deploy from a branch** for this React/Vite application.
+3. Save the setting if prompted.
+4. Open [**Actions → Deploy ATLAS Website to GitHub Pages**](https://github.com/migtam628/FaxingPro/actions/workflows/pages.yml). If necessary, select **Run workflow** and the `main` branch.
+5. After the **Publish website** job succeeds, open **https://migtam628.github.io/FaxingPro/**.
+
+The workflow builds Vite to `dist/` and uses `VITE_BASE_PATH=/FaxingPro/`, which makes the generated JavaScript, CSS, and local font links work under the GitHub Pages project URL. It does **not** modify Electron builds (which still use a relative asset base).
+
+> [!IMPORTANT]
+> Pages hosts **only the static ATLAS preview**. It cannot host this project's Node API, Docker containers, or a real telephone fax gateway. All displayed fax transactions are sample data, and sending and receiving faxes are disabled.
+
+If the page is blank, inspect the browser console for missing JavaScript/CSS files and review the [Pages workflow logs](https://github.com/migtam628/FaxingPro/actions/workflows/pages.yml). If you get a 404, confirm the publishing source is **GitHub Actions** and that the deployment completed successfully.
 
 ## Installation guide
 
