@@ -1,8 +1,8 @@
-<h1 align="center">FaxingPro</h1>
+# FaxingPro
 
-<p align="center"><strong>ATLAS • Self-hosted fax workspace</strong></p>
+**ATLAS — Self-hosted fax workspace**
 
-**Premium fax management UI for web, Windows, macOS and Linux.**
+Premium fax management preview for Windows, macOS, Linux, and the web.
 
 [![Build and Release](https://github.com/migtam628/FaxingPro/actions/workflows/release.yml/badge.svg)](https://github.com/migtam628/FaxingPro/actions/workflows/release.yml)
 [![Release](https://img.shields.io/github/v/release/migtam628/FaxingPro?include_prereleases&label=Release)](https://github.com/migtam628/FaxingPro/releases)
@@ -18,8 +18,17 @@
 
 *Illustrated interface overview using synthetic fax records and numbers. This is a vector preview of the ATLAS layout—not evidence of real fax activity or a live product screenshot.*
 
-## Quick navigation
-[Features](#current-features) · [Install](#installation-guide) · [Walkthrough](#illustrated-atlas-walkthrough) · [Docker + API](#self-hosted-api--docker) · [Architecture](#architecture--roadmap) · [Releases](#github-actions--downloads) · [Troubleshooting](#troubleshooting--security)
+## Contents
+
+- [Current features](#current-features)
+- [Desktop installation](#a-install-a-desktop-release-recommended-for-a-quick-preview)
+- [Local web development](#b-run-the-web-ui-locally)
+- [Docker hosting](#c-host-the-web-application-and-api-yourself-docker)
+- [ATLAS walkthrough](#illustrated-atlas-walkthrough)
+- [API and Docker reference](#self-hosted-api--docker)
+- [Architecture and roadmap](#architecture--roadmap)
+- [Releases](#github-actions--downloads)
+- [Troubleshooting](#troubleshooting--security)
 
 ## Current features
 
@@ -60,16 +69,16 @@
 
 **Linux AppImage** (run in the folder containing the downloaded file):
 
-```bash
+~~~bash
 chmod +x FaxingPro-0.1.0-linux-x86_64.AppImage
 ./FaxingPro-0.1.0-linux-x86_64.AppImage
-```
+~~~
 
 **Ubuntu / Debian**:
 
-```bash
+~~~bash
 sudo apt install ./FaxingPro-0.1.0-linux-amd64.deb
-```
+~~~
 
 > [!NOTE]
 > The preview installers are not signed/notarized; operating systems may show publisher warnings. Only download from the project's GitHub Release assets. Filename versions will change in subsequent releases.
@@ -78,42 +87,42 @@ sudo apt install ./FaxingPro-0.1.0-linux-amd64.deb
 
 **Prerequisites:** Git, npm and **Node.js 22** (recommended and used in GitHub CI; the package declares Node 20+).
 
-```bash
+~~~bash
 git clone https://github.com/migtam628/FaxingPro.git
 cd FaxingPro
 npm install
 npm run dev
-```
+~~~
 
 Open **http://localhost:4173**. This runs the interface with synthetic records, without requiring a telephone carrier.
 
 To run checks or generate the production web build:
 
-```bash
+~~~bash
 npm test
 npm run build
-```
+~~~
 
 To run the Electron desktop development shell, leave `npm run dev` running in **Terminal 1**, then use **Terminal 2**:
 
-```bash
+~~~bash
 # macOS / Linux
 FAXINGPRO_DEV_URL=http://localhost:4173 npm run desktop
-```
+~~~
 
 Windows PowerShell:
 
-```powershell
+~~~powershell
 $env:FAXINGPRO_DEV_URL = "http://localhost:4173"
 npm run desktop
-```
+~~~
 
 To generate platform-native installers from source:
 
-```bash
+~~~bash
 npm run build
 npm run dist
-```
+~~~
 
 Build outputs are written to `release/`; GitHub Actions provides the recommended automated cross-platform builds.
 
@@ -121,33 +130,33 @@ Build outputs are written to `release/`; GitHub Actions provides the recommended
 
 **Prerequisites:** Docker Engine + Docker Compose. These commands also work on a suitable Ubuntu VPS.
 
-```bash
+~~~bash
 git clone https://github.com/migtam628/FaxingPro.git
 cd FaxingPro
 cp .env.example .env
-```
+~~~
 
 Generate a secret token on Linux/macOS:
 
-```bash
+~~~bash
 openssl rand -hex 32
-```
+~~~
 
 Edit `.env` and **replace the example API_TOKEN** with the random value you generated. Keep it private.
 
-```dotenv
-API_TOKEN=YOUR_RANDOM_64_CHARACTER_HEX_TOKEN
+~~~dotenv
+API_TOKEN=PASTE_YOUR_64_CHARACTER_SECRET_HERE
 FAX_TRANSPORT=disabled
 ALLOWED_ORIGINS=http://localhost:4173,http://127.0.0.1:4173
-```
+~~~
 
 Start the containers and test the endpoint:
 
-```bash
+~~~bash
 docker compose up --build -d
 docker compose ps
 curl http://127.0.0.1:8080/healthz
-```
+~~~
 
 The expected JSON includes `"ok": true` and **`"faxEnabled": false`**. This is correct: the starter API is online but no fax engine is connected.
 
@@ -155,20 +164,20 @@ The expected JSON includes `"ok": true` and **`"faxEnabled": false`**. This is c
 
 **Accessing a remote Ubuntu server:** The Compose deployment only binds the website to the host's **127.0.0.1:8080**. Use an SSH tunnel from your own computer:
 
-```bash
+~~~bash
 ssh -L 8080:127.0.0.1:8080 YOUR_USER@YOUR_SERVER
-```
+~~~
 
 While the SSH connection is open, browse to **http://127.0.0.1:8080** on your local computer. For permanent remote use, configure a trusted **HTTPS reverse proxy or private network**. Do not publish an HTTP management port to the internet.
 
 **Useful server commands:**
 
-```bash
+~~~bash
 docker compose logs --tail=100 api
 docker compose logs --tail=100 web
 docker compose restart
 docker compose down
-```
+~~~
 
 ## Illustrated ATLAS walkthrough
 
@@ -235,17 +244,21 @@ The included Node API rejects startup if `API_TOKEN` contains fewer than **32 ch
 
 **Planned end-to-end topology** (not currently deployed):
 
-```mermaid
-flowchart LR
-    UI["ATLAS web + desktop"] --> API["Authenticated HTTPS API"]
-    API --> STORE[("PostgreSQL + document storage")]
-    API --> JOBS["Fax queues / workers"]
-    JOBS --> FAX["FreeSWITCH + SpanDSP"]
-    FAX --> SIP["SIP trunk / T.38 / G.711"]
-    SIP --> PSTN["PSTN fax recipients"]
-    classDef future fill:#f8fafc,stroke:#9bb0c7,stroke-dasharray:6 4,color:#314b67;
-    class STORE,JOBS,FAX,SIP,PSTN future;
-```
+~~~text
+ATLAS web app / Electron desktop
+             |
+         HTTPS API
+             |
+        Fax job queue -------- PostgreSQL + document storage
+             |
+      FreeSWITCH + SpanDSP
+             |
+      SIP trunk (T.38 / G.711)
+             |
+      Telephone network (PSTN)
+             |
+      Recipient fax machine
+~~~
 
 Current engineering milestones:
 
@@ -266,7 +279,7 @@ All desktop release assets are generated through **[Build and Release](https://g
 | Pull request | Tests and installer artifacts; **no GitHub Release** |
 | Manual workflow dispatch | Runs build; publishes a preview from non-tag refs |
 
-Last verified at the time of this documentation update: **[`v0.1.0-preview.3`](https://github.com/migtam628/FaxingPro/releases/tag/v0.1.0-preview.3)**, containing **five installers**. For newer builds, always open **[Releases](https://github.com/migtam628/FaxingPro/releases)**. A passing package workflow proves packaging, **not** real fax delivery or complete physical-device testing.
+Visit **[Releases](https://github.com/migtam628/FaxingPro/releases)** for the latest published preview and its five desktop installers. A passing package workflow proves packaging, **not** real fax delivery or complete physical-device testing.
 
 ## Troubleshooting & security
 
@@ -286,7 +299,7 @@ Use HTTPS for remote access, keep tokens and SIP credentials out of Git, do not 
 
 ## Repository map
 
-```text
+~~~text
 FaxingPro/
 ├── .github/workflows/release.yml  # Tests + 5 desktop release assets
 ├── docs/
@@ -301,7 +314,7 @@ FaxingPro/
 ├── Dockerfile                      # Web image
 ├── compose.yaml                    # Self-hosted web + private API
 └── package.json                    # Build scripts and desktop targets
-```
+~~~
 
 **Technology stack:** React, TypeScript, Vite, Electron, local Inter font assets, Lucide, Node.js, Nginx and Docker Compose.
 
