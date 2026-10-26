@@ -126,7 +126,9 @@ export default function App(){
   async function testConnection(){
     const endpoint=apiEndpoint.trim().replace(/\/$/,'');
     if(!endpoint){setToast('Enter the FaxingPro API URL first.');return;}
-    if(new URL(endpoint).origin!==window.location.origin){
+    let site:URL;
+    try{site=new URL(endpoint);}catch{setToast('Enter a valid API base URL.');return;}
+    if(site.origin!==window.location.origin){
       setToast('For security, open and sign in directly on the FaxingPro HTTPS website.');return;
     }
     setTesting(true);
