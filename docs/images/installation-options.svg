@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 320" width="1120" height="320" role="img" aria-label="Illustrated installation choices: desktop release, local web development, and Docker self-hosting.">
+<rect x="0" y="0" width="1120" height="320" rx="16" fill="#F5F8FC" stroke="none"/>
+<text x="27" y="49" fill="#172D4B" font-size="26" font-family="Inter,Arial,sans-serif" font-weight="800">Choose your installation method</text>
+<text x="28" y="72" fill="#71829A" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">Three supported ways to explore the ATLAS preview.</text>
+<rect x="20" y="99" width="354" height="195" rx="12" fill="#FFF" stroke="#DCE7F0"/>
+<rect x="36" y="115" width="43" height="37" rx="8" fill="#DFF7EE" stroke="none"/>
+<text x="45" y="140" fill="#0C9985" font-size="16" font-family="Inter,Arial,sans-serif" font-weight="800">01</text>
+<text x="91" y="139" fill="#1F3853" font-size="18" font-family="Inter,Arial,sans-serif" font-weight="800">Desktop installer</text>
+<text x="37" y="173" fill="#74869B" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">Windows / macOS / Linux</text>
+<rect x="36" y="188" width="322" height="37" rx="7" fill="#13243B" stroke="none"/>
+<text x="44" y="211" fill="#AEF4E6" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="600">Releases → Assets</text>
+<text x="37" y="249" fill="#54718A" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="600">✓  Download the correct package</text>
+<text x="37" y="272" fill="#54718A" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="600">✓  Open FaxingPro</text>
+<rect x="392" y="99" width="354" height="195" rx="12" fill="#FFF" stroke="#DCE7F0"/>
+<rect x="408" y="115" width="43" height="37" rx="8" fill="#EAF1FF" stroke="none"/>
+<text x="417" y="140" fill="#367AC3" font-size="16" font-family="Inter,Arial,sans-serif" font-weight="800">02</text>
+<text x="463" y="139" fill="#1F3853" font-size="18" font-family="Inter,Arial,sans-serif" font-weight="800">Local development</text>
+<text x="409" y="173" fill="#74869B" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">Node.js 22 + npm</text>
+<rect x="408" y="188" width="322" height="37" rx="7" fill="#13243B" stroke="none"/>
+<text x="416" y="211" fill="#AEF4E6" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="600">npm install &amp;&amp; npm run dev</text>
+<text x="409" y="249" fill="#54718A" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="600">✓  Clone the repo first</text>
+<text x="409" y="272" fill="#54718A" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="600">✓  Browse localhost:4173</text>
+<rect x="764" y="99" width="354" height="195" rx="12" fill="#FFF" stroke="#DCE7F0"/>
+<rect x="780" y="115" width="43" height="37" rx="8" fill="#FFF1DE" stroke="none"/>
+<text x="789" y="140" fill="#C28A31" font-size="16" font-family="Inter,Arial,sans-serif" font-weight="800">03</text>
+<text x="835" y="139" fill="#1F3853" font-size="18" font-family="Inter,Arial,sans-serif" font-weight="800">Docker web + API</text>
+<text x="781" y="173" fill="#74869B" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">Docker Compose + .env</text>
+<rect x="780" y="188" width="322" height="37" rx="7" fill="#13243B" stroke="none"/>
+<text x="788" y="211" fill="#AEF4E6" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="600">docker compose up --build -d</text>
+<text x="781" y="249" fill="#54718A" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="600">✓  Generate an API_TOKEN</text>
+<text x="781" y="272" fill="#54718A" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="600">✓  Browse host 127.0.0.1:8080</text>
+<text x="23" y="311" fill="#9F722E" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="800">UI PREVIEW ONLY  •  NO LIVE PSTN TRANSMISSION</text>
+</svg>

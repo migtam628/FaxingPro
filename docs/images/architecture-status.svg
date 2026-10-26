@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 340" width="1120" height="340" role="img" aria-label="Architecture status: v0.1 web client and Node starter implemented; storage and fax telephony planned.">
+<rect x="0" y="0" width="1120" height="340" rx="16" fill="#F5F8FC" stroke="none"/>
+<text x="26" y="43" fill="#1C344F" font-size="25" font-family="Inter,Arial,sans-serif" font-weight="800">How FaxingPro is built</text>
+<text x="26" y="64" fill="#7A8FA7" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">Solid panels: included in v0.1. Dashed panels: planned, not implemented.</text>
+<rect x="20" y="87" width="506" height="213" rx="12" fill="#E7F8F3" stroke="#A7DDCF"/>
+<text x="38" y="112" fill="#0B8E7C" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="800">CURRENT PREVIEW</text>
+<rect x="39" y="131" width="202" height="75" rx="9" fill="#FFF" stroke="#B5DED3"/>
+<text x="53" y="160" fill="#243B55" font-size="17" font-family="Inter,Arial,sans-serif" font-weight="800">ATLAS UI</text>
+<text x="53" y="180" fill="#728CA0" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">React + Electron</text>
+<line x1="242" y1="169" x2="300" y2="169" stroke="#0E9888" stroke-width="3"/>
+<rect x="301" y="131" width="205" height="75" rx="9" fill="#FFF" stroke="#B5DED3"/>
+<text x="315" y="160" fill="#243B55" font-size="17" font-family="Inter,Arial,sans-serif" font-weight="800">Node API</text>
+<text x="315" y="180" fill="#728CA0" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">Health + bearer auth</text>
+<rect x="39" y="224" width="467" height="55" rx="9" fill="#FFF" stroke="#B5DED3"/>
+<text x="55" y="247" fill="#2F4B64" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="700">Docker • Nginx web frontend • disabled fax transport</text>
+<text x="55" y="265" fill="#8A9AA9" font-size="11" font-family="Inter,Arial,sans-serif" font-weight="500">No real fax jobs, documents or database yet.</text>
+<rect x="548" y="87" width="553" height="213" rx="12" fill="#F6F8FB" stroke="#A9B9CC"/>
+<text x="567" y="112" fill="#73859C" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="800">PLANNED SERVICES</text>
+<rect x="568" y="131" width="239" height="66" rx="9" fill="#FFF" stroke="#A0B1C4" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="581" y="169" fill="#3A536D" font-size="15" font-family="Inter,Arial,sans-serif" font-weight="700">PostgreSQL / storage</text>
+<rect x="841" y="131" width="239" height="66" rx="9" fill="#FFF" stroke="#A0B1C4" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="854" y="169" fill="#3A536D" font-size="15" font-family="Inter,Arial,sans-serif" font-weight="700">Queue + converters</text>
+<rect x="568" y="224" width="239" height="66" rx="9" fill="#FFF" stroke="#A0B1C4" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="581" y="262" fill="#3A536D" font-size="15" font-family="Inter,Arial,sans-serif" font-weight="700">FreeSWITCH / T.38</text>
+<rect x="841" y="224" width="239" height="66" rx="9" fill="#FFF" stroke="#A0B1C4" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="854" y="262" fill="#3A536D" font-size="15" font-family="Inter,Arial,sans-serif" font-weight="700">PSTN / fax carrier</text>
+<text x="23" y="324" fill="#9C702C" font-size="11" font-family="Inter,Arial,sans-serif" font-weight="700">Real transmission requires an installed and verified telephony stack with a SIP trunk or a physical telephone line.</text>
+</svg>

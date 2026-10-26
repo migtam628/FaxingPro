@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 585" width="1120" height="585" role="img" aria-label="Illustrative FaxingPro ATLAS dashboard, using fictional records and metrics.">
+<rect x="0" y="0" width="1120" height="585" rx="14" fill="#F5F8FC" stroke="none"/>
+<rect x="0" y="0" width="220" height="585" rx="14" fill="#101D32" stroke="none"/>
+<rect x="16" y="18" width="34" height="34" rx="8" fill="#0E9D8C" stroke="none"/>
+<text x="27" y="41" fill="#FFF" font-size="18" font-family="Inter,Arial,sans-serif" font-weight="800">F</text>
+<text x="61" y="40" fill="#FFF" font-size="21" font-family="Inter,Arial,sans-serif" font-weight="800">FaxingPro</text>
+<text x="62" y="55" fill="#94A8C0" font-size="8" font-family="Inter,Arial,sans-serif" font-weight="700">ATLAS WORKSPACE</text>
+<rect x="16" y="81" width="188" height="50" rx="8" fill="#1C3048" stroke="#334762"/>
+<text x="34" y="105" fill="#EBF4FB" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="700">My Workspace</text>
+<text x="34" y="121" fill="#94AAC4" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="500">Local preview</text>
+<text x="25" y="166" fill="#7990AD" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="700">WORKSPACE</text>
+<rect x="10" y="168" width="198" height="33" rx="7" fill="#25455A" stroke="none"/>
+<text x="25" y="192" fill="#A4F3E3" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="700">Dashboard</text>
+<text x="25" y="227" fill="#B3C2D4" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="500">Inbox</text>
+<text x="25" y="262" fill="#B3C2D4" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="500">Sent Faxes</text>
+<text x="25" y="297" fill="#B3C2D4" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="500">New Fax</text>
+<text x="25" y="332" fill="#B3C2D4" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="500">Contacts</text>
+<text x="25" y="367" fill="#B3C2D4" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="500">Documents</text>
+<text x="25" y="413" fill="#7990AD" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="700">MANAGEMENT</text>
+<text x="25" y="443" fill="#B3C2D4" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="500">Fax Numbers</text>
+<text x="25" y="483" fill="#7990AD" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="700">SYSTEM</text>
+<text x="25" y="514" fill="#B3C2D4" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="500">Settings</text>
+<text x="25" y="548" fill="#7990AD" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="700">SIP &amp; T.38</text>
+<rect x="220" y="0" width="900" height="68" rx="0" fill="#FFF" stroke="none"/>
+<text x="252" y="42" fill="#7C8CA0" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="500">Workspace / Dashboard</text>
+<rect x="975" y="20" width="117" height="27" rx="7" fill="#FFF5DD" stroke="none"/>
+<text x="990" y="38" fill="#9C7228" font-size="11" font-family="Inter,Arial,sans-serif" font-weight="800">DEMO DATA</text>
+<text x="252" y="112" fill="#1C314C" font-size="29" font-family="Inter,Arial,sans-serif" font-weight="800">Good morning</text>
+<text x="252" y="135" fill="#8697AB" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="500">Manage your fax workspace from one place.</text>
+<rect x="970" y="94" width="123" height="38" rx="8" fill="#0C9588" stroke="none"/>
+<text x="990" y="119" fill="#FFF" font-size="13" font-family="Inter,Arial,sans-serif" font-weight="700">+ New Fax</text>
+<rect x="252" y="154" width="842" height="47" rx="7" fill="#E7F7F3" stroke="#CEEAE1"/>
+<text x="269" y="173" fill="#0B816F" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="700">ATLAS preview environment</text>
+<text x="269" y="189" fill="#588B80" font-size="11" font-family="Inter,Arial,sans-serif" font-weight="500">Illustrative data — real fax sending and reception are not connected.</text>
+<rect x="252" y="218" width="199" height="111" rx="9" fill="#FFF" stroke="#DFE7EF"/>
+<rect x="266" y="230" width="30" height="30" rx="7" fill="#DDF5EA" stroke="none"/>
+<text x="277" y="251" fill="#0D9B7A" font-size="18" font-family="Inter,Arial,sans-serif" font-weight="800">↓</text>
+<text x="265" y="290" fill="#223850" font-size="27" font-family="Inter,Arial,sans-serif" font-weight="800">128</text>
+<text x="265" y="311" fill="#7B8BA0" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">Received</text>
+<text x="392" y="312" fill="#0C9588" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="700">+12.5%</text>
+<rect x="463" y="218" width="199" height="111" rx="9" fill="#FFF" stroke="#DFE7EF"/>
+<rect x="477" y="230" width="30" height="30" rx="7" fill="#E4EFFB" stroke="none"/>
+<text x="488" y="251" fill="#3683D1" font-size="18" font-family="Inter,Arial,sans-serif" font-weight="800">↑</text>
+<text x="476" y="290" fill="#223850" font-size="27" font-family="Inter,Arial,sans-serif" font-weight="800">342</text>
+<text x="476" y="311" fill="#7B8BA0" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">Sent</text>
+<text x="603" y="312" fill="#0C9588" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="700">+8.2%</text>
+<rect x="674" y="218" width="199" height="111" rx="9" fill="#FFF" stroke="#DFE7EF"/>
+<rect x="688" y="230" width="30" height="30" rx="7" fill="#FFF0DC" stroke="none"/>
+<text x="699" y="251" fill="#CE932E" font-size="18" font-family="Inter,Arial,sans-serif" font-weight="800">•</text>
+<text x="687" y="290" fill="#223850" font-size="27" font-family="Inter,Arial,sans-serif" font-weight="800">4</text>
+<text x="687" y="311" fill="#7B8BA0" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">Pending</text>
+<text x="814" y="312" fill="#0C9588" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="700">Sample</text>
+<rect x="885" y="218" width="199" height="111" rx="9" fill="#FFF" stroke="#DFE7EF"/>
+<rect x="899" y="230" width="30" height="30" rx="7" fill="#FCECEB" stroke="none"/>
+<text x="910" y="251" fill="#E16F64" font-size="18" font-family="Inter,Arial,sans-serif" font-weight="800">!</text>
+<text x="898" y="290" fill="#223850" font-size="27" font-family="Inter,Arial,sans-serif" font-weight="800">2</text>
+<text x="898" y="311" fill="#7B8BA0" font-size="12" font-family="Inter,Arial,sans-serif" font-weight="500">Failed</text>
+<text x="1025" y="312" fill="#0C9588" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="700">Sample</text>
+<rect x="252" y="343" width="519" height="213" rx="10" fill="#FFF" stroke="#DFE7EF"/>
+<text x="273" y="372" fill="#243954" font-size="15" font-family="Inter,Arial,sans-serif" font-weight="800">Fax Activity</text>
+<text x="273" y="389" fill="#98A8B9" font-size="10" font-family="Inter,Arial,sans-serif" font-weight="500">Sample 30-day overview</text>
+<rect x="786" y="343" width="308" height="213" rx="10" fill="#FFF" stroke="#DFE7EF"/>
+<text x="805" y="371" fill="#243954" font-size="15" font-family="Inter,Arial,sans-serif" font-weight="800">Recent transmissions</text>
+<line x1="281" y1="419" x2="749" y2="419" stroke="#DDE6EE" stroke-width="1"/>
+<line x1="281" y1="449" x2="749" y2="449" stroke="#DDE6EE" stroke-width="1"/>
+<line x1="281" y1="479" x2="749" y2="479" stroke="#DDE6EE" stroke-width="1"/>
+<line x1="281" y1="509" x2="749" y2="509" stroke="#DDE6EE" stroke-width="1"/>
+<line x1="281" y1="539" x2="749" y2="539" stroke="#DDE6EE" stroke-width="1"/>
+<rect x="287" y="513" width="6" height="24" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="294" y="521" width="6" height="16" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="306.2" y="506" width="6" height="31" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="313.2" y="517" width="6" height="20" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="325.4" y="493" width="6" height="44" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="332.4" y="508" width="6" height="29" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="344.6" y="499" width="6" height="38" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="351.6" y="512" width="6" height="25" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="363.8" y="482" width="6" height="55" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="370.8" y="501" width="6" height="36" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="383" y="474" width="6" height="63" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="390" y="496" width="6" height="41" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="402.2" y="487" width="6" height="50" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="409.2" y="504" width="6" height="33" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="421.4" y="465" width="6" height="72" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="428.4" y="490" width="6" height="47" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="440.6" y="477" width="6" height="60" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="447.6" y="498" width="6" height="39" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="459.79999999999995" y="466" width="6" height="71" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="466.79999999999995" y="491" width="6" height="46" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="479" y="472" width="6" height="65" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="486" y="495" width="6" height="42" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="498.2" y="458" width="6" height="79" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="505.2" y="486" width="6" height="51" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="517.4" y="481" width="6" height="56" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="524.4" y="501" width="6" height="36" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="536.6" y="469" width="6" height="68" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="543.6" y="493" width="6" height="44" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="555.8" y="461" width="6" height="76" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="562.8" y="488" width="6" height="49" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="575" y="473" width="6" height="64" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="582" y="495" width="6" height="42" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="594.2" y="458" width="6" height="79" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="601.2" y="486" width="6" height="51" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="613.4" y="450" width="6" height="87" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="620.4" y="480" width="6" height="57" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="632.5999999999999" y="464" width="6" height="73" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="639.5999999999999" y="490" width="6" height="47" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="651.8" y="455" width="6" height="82" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="658.8" y="484" width="6" height="53" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="671" y="467" width="6" height="70" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="678" y="491" width="6" height="46" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="690.2" y="449" width="6" height="88" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="697.2" y="480" width="6" height="57" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="709.4" y="459" width="6" height="78" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="716.4" y="486" width="6" height="51" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="728.5999999999999" y="456" width="6" height="81" rx="2" fill="#0CA18F" stroke="none"/>
+<rect x="735.5999999999999" y="484" width="6" height="53" rx="2" fill="#5B93E0" stroke="none"/>
+<rect x="808" y="395" width="22" height="25" rx="5" fill="#FFF0EF" stroke="none"/>
+<text x="813" y="411" fill="#CE726F" font-size="15" font-family="Inter,Arial,sans-serif" font-weight="500">▤</text>
+<text x="837" y="411" fill="#344960" font-size="11" font-family="Inter,Arial,sans-serif" font-weight="600">Contract.pdf</text>
+<text x="1032" y="411" fill="#0E9684" font-size="9" font-family="Inter,Arial,sans-serif" font-weight="700">RECEIVED</text>
+<rect x="808" y="428" width="22" height="25" rx="5" fill="#FFF0EF" stroke="none"/>
+<text x="813" y="444" fill="#CE726F" font-size="15" font-family="Inter,Arial,sans-serif" font-weight="500">▤</text>
+<text x="837" y="444" fill="#344960" font-size="11" font-family="Inter,Arial,sans-serif" font-weight="600">Insurance Forms.pdf</text>
+<text x="1032" y="444" fill="#0E9684" font-size="9" font-family="Inter,Arial,sans-serif" font-weight="700">RECEIVED</text>
+<rect x="808" y="461" width="22" height="25" rx="5" fill="#FFF0EF" stroke="none"/>
+<text x="813" y="477" fill="#CE726F" font-size="15" font-family="Inter,Arial,sans-serif" font-weight="500">▤</text>
+<text x="837" y="477" fill="#344960" font-size="11" font-family="Inter,Arial,sans-serif" font-weight="600">Office Documents.pdf</text>
+<text x="1032" y="477" fill="#0E9684" font-size="9" font-family="Inter,Arial,sans-serif" font-weight="700">SENT</text>
+<rect x="808" y="494" width="22" height="25" rx="5" fill="#FFF0EF" stroke="none"/>
+<text x="813" y="510" fill="#CE726F" font-size="15" font-family="Inter,Arial,sans-serif" font-weight="500">▤</text>
+<text x="837" y="510" fill="#344960" font-size="11" font-family="Inter,Arial,sans-serif" font-weight="600">Purchase Order.pdf</text>
+<text x="1032" y="510" fill="#B08238" font-size="9" font-family="Inter,Arial,sans-serif" font-weight="700">QUEUED</text>
+</svg>
