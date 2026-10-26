@@ -258,6 +258,19 @@ The included Node API rejects startup if `API_TOKEN` contains fewer than **32 ch
 
 **Not included** in the current containers: FreeSWITCH, SpanDSP, SIP trunks, PostgreSQL, Redis, encrypted document storage or production account management.
 
+## Telnyx SIP/T.38 (Ubuntu VPS)
+
+Already have a Telnyx phone number? Follow the [Telnyx VPS integration runbook](docs/TELNYX_VPS_INTEGRATION.md) for the SIP trunk, T.38, FreeSWITCH, firewall, and test requirements.
+
+On the intended VPS, run the **read-only** readiness check:
+
+~~~bash
+bash scripts/vps-preflight.sh
+~~~
+
+> [!IMPORTANT]
+> This is a diagnostic and a setup runbook, **not** a live fax connection. Real calling remains disabled in the application until FreeSWITCH, SIP routing, and the backend pass actual call tests.
+
 ## Architecture & roadmap
 
 ![FaxingPro illustrated implemented vs planned architecture](docs/images/architecture-status.svg)
