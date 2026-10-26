@@ -25,7 +25,7 @@ cp .env.example .env
 # edit .env: change API_TOKEN to output of: openssl rand -hex 32
 docker compose up --build -d
 ```
-Web at http://127.0.0.1:8080 (host-local only); Node API on the private Compose network.
+Web at http://127.0.0.1:8092 after copying .env.example (host-local only; change FAXINGPRO_HTTP_PORT if needed); Node API on the private Compose network.
 Deploy HTTPS via Caddy or another secure reverse proxy before enabling access beyond the machine. Never publish port 8080 broadly without TLS.
 
 The API refuses to start with a short secret and refuses to enable a fax transport that has not been implemented. Configure 'API Connection' in the app using the HTTPS server address and API_TOKEN to perform a health check. Cross-origin API calls require ALLOWED_ORIGINS to explicitly permit the requesting origin (for file:// Electron this may be the string 'null' but enabling null origins has security implications; production should use a dedicated authenticated intermediary).

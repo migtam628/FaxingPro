@@ -7,8 +7,8 @@ const token = process.env.API_TOKEN || '';
 const transport = process.env.FAX_TRANSPORT || 'disabled';
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(x=>x.trim()).filter(Boolean);
 
-if (token.length < 32) {
-  console.error('Refusing to start: API_TOKEN must contain at least 32 characters.');
+if (token.length < 32 || /^(REPLACE_WITH_|PASTE_|YOUR_|CHANGE_ME)/i.test(token)) {
+  console.error('Refusing to start: API_TOKEN must be a new random secret of at least 32 characters, not an example placeholder.');
   process.exit(1);
 }
 if (transport !== 'disabled') {

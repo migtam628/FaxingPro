@@ -39,3 +39,12 @@ test('API refuses to boot with the default/missing secret', async () => {
   const code=await new Promise(resolve=>child.on('exit',resolve));
   assert.equal(code,1);
 });
+
+test('API refuses the public example token even though it is long enough', async () => {
+  const child=spawn(process.execPath,['server/index.mjs'],{
+    env:{...process.env,API_TOKEN:'REPLACE_WITH_A_RANDOM_SECRET_AT_LEAST_32_CHARACTERS'},
+    stdio:'ignore'
+  });
+  const code=await new Promise(resolve=>child.on('exit',resolve));
+  assert.equal(code,1);
+});

@@ -93,3 +93,7 @@ Do not send full API keys, connection passwords, private keys or server .env fil
 - Telnyx T.38 outbound configuration: https://support.telnyx.com/en/articles/4404448-sip-connection-inbound-outbound-settings
 - FreeSWITCH fax apps and negotiation: https://developer.signalwire.com/freeswitch/applications/fax/
 - FreeSWITCH installation: https://developer.signalwire.com/freeswitch/foundations/getting-started/
+
+## Dedicated loopback HTTP port for this VPS
+
+Your MooBee Nginx stack uses `127.0.0.1:8080`. FaxingPro's Compose configuration now uses a configurable host port `FAXINGPRO_HTTP_PORT`, with the example environment set to **8092**. This leaves MooBee untouched. Do not launch a second Caddy or Nginx on the public ports 80/443; MooBee's Caddy is already bound there. Before exposing the FaxingPro API remotely, implement authentication and a separate hostname behind a carefully controlled reverse proxy.

@@ -175,20 +175,20 @@ Start the containers and test the endpoint:
 ~~~bash
 docker compose up --build -d
 docker compose ps
-curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8092/healthz
 ~~~
 
 The expected JSON includes `"ok": true` and **`"faxEnabled": false`**. This is correct: the starter API is online but no fax engine is connected.
 
-**Open the web UI:** **http://127.0.0.1:8080** from the **Docker host**.
+**Open the web UI:** **http://127.0.0.1:8092** from the **Docker host**.
 
-**Accessing a remote Ubuntu server:** The Compose deployment only binds the website to the host's **127.0.0.1:8080**. Use an SSH tunnel from your own computer:
+**Accessing a remote Ubuntu server:** The Compose deployment only binds the website to the host's **127.0.0.1:8092**. Use an SSH tunnel from your own computer:
 
 ~~~bash
-ssh -L 8080:127.0.0.1:8080 YOUR_USER@YOUR_SERVER
+ssh -L 8080:127.0.0.1:8092 YOUR_USER@YOUR_SERVER
 ~~~
 
-While the SSH connection is open, browse to **http://127.0.0.1:8080** on your local computer. For permanent remote use, configure a trusted **HTTPS reverse proxy or private network**. Do not publish an HTTP management port to the internet.
+While the SSH connection is open, browse to **http://127.0.0.1:8092** on your local computer. For permanent remote use, configure a trusted **HTTPS reverse proxy or private network**. Do not publish an HTTP management port to the internet.
 
 **Useful server commands:**
 
@@ -232,7 +232,7 @@ Choose any sample record. The Document Viewer displays a placeholder page and il
 
 1. Start the Docker services using [the setup above](#c-host-the-web-application-and-api-yourself-docker).
 2. From the hosted web UI, go to **Settings → API Connection**.
-3. Enter the API URL `http://127.0.0.1:8080` when the browser reaches the Docker host directly or through the described tunnel.
+3. Enter the API URL `http://127.0.0.1:8092` when the browser reaches the Docker host directly or through the described tunnel.
 4. Enter the same **API_TOKEN** from your `.env`.
 5. Select **Test connection**.
 
