@@ -9,7 +9,7 @@
 - The web UI binds ONLY to host loopback 127.0.0.1:8092. Postgres is not published.
 - Existing MooBee services (Caddy 80/443, MooBee Nginx 8080, databases) are unchanged.
 - Backend validates Ed25519-signed Telnyx webhooks and records unique webhook IDs.
-- Received PDF URLs are downloaded into the dedicated volume; outbound PDFs use expiring HMAC-signed URLs.
+- Received PDF URLs are downloaded into an AES-256-GCM encrypted PDF volume; outbound PDFs use expiring HMAC-signed URLs. Protect and back up the separate storage encryption key.
 - Outbound sending requires an explicit SEND_ENABLED=true and can reach only TEST_DESTINATION.
 
 ## 1. Prepare the VPS
@@ -21,15 +21,16 @@ cp deployment/telnyx/.env.example deployment/telnyx/.env
 chmod 600 deployment/telnyx/.env
 ~~~
 
-Run openssl three times and use THREE DIFFERENT outputs:
+Run openssl four times and use FOUR DIFFERENT outputs:
 
 ~~~bash
 openssl rand -hex 32
 openssl rand -hex 32
 openssl rand -hex 32
+openssl rand -hex 32
 ~~~
 
-Put these in DB_PASSWORD, API_TOKEN and MEDIA_SIGNING_SECRET respectively. Use hex for DB_PASSWORD. Do not expose these or your Telnyx API key.
+Put these in DB_PASSWORD, API_TOKEN, MEDIA_SIGNING_SECRET and STORAGE_ENCRYPTION_KEY respectively. Use hex for DB_PASSWORD. Do not expose these or your Telnyx API key.
 
 ## 2. Configure Telnyx (do not reassign the DID yet)
 
@@ -114,7 +115,7 @@ Open http://127.0.0.1:8092 on the computer where the tunnel is running and enter
 
 ## 8. Security limits and production blockers
 
-This is a SINGLE-OPERATOR PILOT, not a certified production/healthcare platform. Missing protections include encrypted document storage at rest, robust authentication and MFA, user/role management, virus scanning, external durable job queues, retention and deletion policies, audited backup restoration, and security review.
+This is a SINGLE-OPERATOR PILOT, not a certified production/healthcare platform. Missing protections include managed encryption key rotation, robust authentication and MFA, user/role management, virus scanning, external durable job queues, retention and deletion policies, audited backup restoration, and security review.
 
 Use nonsensitive test documents only. Keep .env, PostgreSQL and the PDF volume private. Do not store PHI or regulated documents here. Maintain off-host backups with secure access before real business use.
 

@@ -4,14 +4,15 @@ import {mkdir,readFile,writeFile,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
 import {e164US,pdfValid,cleanName,statusFor,webhookKey,verifyWebhook,
-  signMedia,mediaAuthorized,safeIncomingUrl} from './telnyx-utils.mjs';
+  signMedia,mediaAuthorized,safeIncomingUrl,encryptPdf,decryptPdf} from './telnyx-utils.mjs';
 
 const e=process.env, port=Number(e.PORT||8088), dir=e.FILE_DIR||'/data/files';
-const secret=e.API_TOKEN||'', mediaSecret=e.MEDIA_SIGNING_SECRET||'';
+const secret=e.API_TOKEN||'', mediaSecret=e.MEDIA_SIGNING_SECRET||'', storageKey=e.STORAGE_ENCRYPTION_KEY||'';
 const base=(e.TELNYX_PUBLIC_BASE_URL||'').replace(/\/$/,'');
 const faxApp=e.TELNYX_FAX_APP_ID||'',did=e.TELNYX_FROM_NUMBER||'';
 const sending=e.SEND_ENABLED==='true',destination=e.TEST_DESTINATION||'';
 if(!e.DATABASE_URL||secret.length<32||mediaSecret.length<32||!e.TELNYX_PUBLIC_KEY||
+  !/^[a-f0-9]{64}$/i.test(storageKey)||
   /^(REPLACE_|PASTE_|YOUR_)/i.test(secret))throw Error('Missing safe backend configuration');
 if(sending&&(!e.TELNYX_API_KEY||!faxApp||!e164US(did)||!e164US(destination)||
   !base.startsWith('https://')))throw Error('Enable sending only with Telnyx credentials, US DID, test destination and HTTPS origin');
@@ -65,7 +66,7 @@ const postFax=async(req,res)=>{
   const old=await db.query('SELECT * FROM faxes WHERE client_key=$1',[reqId]);
   if(old.rows.length)return output(res,200,row(old.rows[0]));
   const filename=cleanName(v.filename||'document.pdf'),title=String(v.title||filename).slice(0,160);
-  const file=id+'.pdf';await writeFile(path.join(dir,file),data,{mode:0o600,flag:'wx'});
+  const file=id+'.pdf';await writeFile(path.join(dir,file),encryptPdf(data,storageKey),{mode:0o600,flag:'wx'});
   try{await db.query("INSERT INTO faxes(id,client_key,direction,status,from_number,to_number,title,filename,file_name)"+
     " VALUES($1,$2,'outbound','submitting',$3,$4,$5,$6,$7)",[id,reqId,did,v.recipient,title,filename,file]);}
   catch(err){await unlink(path.join(dir,file)).catch(()=>{});throw err;}
@@ -143,7 +144,7 @@ const capture=async()=>{
         const pdf=Buffer.from(await response.arrayBuffer());
         if(!pdfValid(pdf))throw Error('Invalid inbound PDF');
         const name=item.id+'.pdf';
-        await writeFile(path.join(dir,name),pdf,{mode:0o600,flag:'wx'}).catch(err=>{if(err.code!=='EEXIST')throw err;});
+        await writeFile(path.join(dir,name),encryptPdf(pdf,storageKey),{mode:0o600,flag:'wx'}).catch(err=>{if(err.code!=='EEXIST')throw err;});
         await db.query("UPDATE faxes SET file_name=$2,filename='received.pdf',"+
           "download_state='saved',media_url=NULL,updated_at=now() WHERE id=$1",[item.id,name]);
       }catch(err){console.error('Inbound PDF capture pending: '+item.id+' ('+err.message+')');}
@@ -167,7 +168,7 @@ const app=http.createServer(async(req,res)=>{
         return output(res,403,{error:'Media link expired or invalid'});
       const {rows}=await db.query("SELECT file_name FROM faxes WHERE id=$1 AND direction='outbound'",[media[1]]);
       if(!rows[0]?.file_name)return output(res,404,{error:'Not found'});
-      const pdf=await readFile(path.join(dir,rows[0].file_name));
+      const pdf=decryptPdf(await readFile(path.join(dir,rows[0].file_name)),storageKey);
       res.writeHead(200,{'Content-Type':'application/pdf','Cache-Control':'no-store',
         'X-Content-Type-Options':'nosniff'});return res.end(pdf);
     }
@@ -192,7 +193,7 @@ const app=http.createServer(async(req,res)=>{
       if(req.method==='GET'&&doc){
         const {rows}=await db.query('SELECT file_name,filename FROM faxes WHERE id=$1',[doc[1]]);
         if(!rows[0]?.file_name)return output(res,404,{error:'Document not stored'});
-        const pdf=await readFile(path.join(dir,rows[0].file_name));
+        const pdf=decryptPdf(await readFile(path.join(dir,rows[0].file_name)),storageKey);
         res.writeHead(200,{'Content-Type':'application/pdf','Cache-Control':'private,no-store',
           'Content-Disposition':'attachment; filename="'+cleanName(rows[0].filename)+'"',
           'X-Content-Type-Options':'nosniff'});return res.end(pdf);

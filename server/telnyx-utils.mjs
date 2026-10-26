@@ -1,4 +1,4 @@
-import { createHmac, createPublicKey, timingSafeEqual, verify } from 'node:crypto';
+import { createHmac, createPublicKey, timingSafeEqual, verify, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
 export const e164US = value => typeof value === 'string' && /^\+1[2-9]\d{9}$/.test(value);
 export const pdfValid = buf => Buffer.isBuffer(buf) && buf.length >= 20 &&
@@ -56,3 +56,19 @@ export function safeIncomingUrl(raw) {
   } catch { return null; }
 }
 export const terminal = state => ['delivered', 'received', 'failed'].includes(state);
+
+export function encryptPdf(buffer,keyHex) {
+  if (!/^[0-9a-f]{64}$/i.test(keyHex)) throw new Error('STORAGE_ENCRYPTION_KEY must be 32 bytes hex');
+  const nonce=randomBytes(12);
+  const cipher=createCipheriv('aes-256-gcm',Buffer.from(keyHex,'hex'),nonce);
+  const content=Buffer.concat([cipher.update(buffer),cipher.final()]);
+  return Buffer.concat([Buffer.from('FP01'),nonce,cipher.getAuthTag(),content]);
+}
+export function decryptPdf(encrypted,keyHex) {
+  if (!/^[0-9a-f]{64}$/i.test(keyHex) || encrypted.subarray(0,4).toString()!=='FP01')
+    throw new Error('Unrecognized fax storage format or encryption key');
+  const dec=createDecipheriv('aes-256-gcm',Buffer.from(keyHex,'hex'),
+    encrypted.subarray(4,16));
+  dec.setAuthTag(encrypted.subarray(16,32));
+  return Buffer.concat([dec.update(encrypted.subarray(32)),dec.final()]);
+}

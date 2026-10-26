@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { pdfValid, e164US, signMedia, mediaAuthorized, webhookKey, verifyWebhook, safeIncomingUrl, statusFor } from '../server/telnyx-utils.mjs';
+import { pdfValid, e164US, signMedia, mediaAuthorized, webhookKey, verifyWebhook, safeIncomingUrl, statusFor, encryptPdf, decryptPdf } from '../server/telnyx-utils.mjs';
 
 test('validates outbound destinations and PDFs', () => {
   assert.equal(e164US('+13055551234'), true);
@@ -38,4 +38,14 @@ test('Telnyx statuses mapped; unknown type never terminal', () => {
   assert.equal(statusFor('fax.delivered'),'delivered');
   assert.equal(statusFor('fax.received'),'received');
   assert.equal(statusFor('fax.unknown'),null);
+});
+
+test('AES-256-GCM encrypted PDF volume round trip and tamper rejection',()=>{
+  const pdf=Buffer.from('%PDF-1.7\\nThis is a private test fax.\\n%%EOF');
+  const key='2'.repeat(64), encrypted=encryptPdf(pdf,key);
+  assert.equal(encrypted.includes(pdf),false);
+  assert.deepEqual(decryptPdf(encrypted,key),pdf);
+  assert.throws(()=>decryptPdf(encrypted,'3'.repeat(64)));
+  const modified=Buffer.from(encrypted);modified[modified.length-1]^=1;
+  assert.throws(()=>decryptPdf(modified,key));
 });
