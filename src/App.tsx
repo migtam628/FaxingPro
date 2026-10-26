@@ -7,7 +7,7 @@ import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, 
   Trash2, UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
   type LucideIcon } from 'lucide-react';
 import { demoFaxes, contacts } from './demo';
-import { checkApi, listFaxes, getStats, downloadFax, submitFax, type Health, type FaxStats, type ServerFax } from './api';
+import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, downloadFax, submitFax, type Health, type FaxStats, type ServerFax } from './api';
 import type { Fax, FaxStatus, Page } from './types';
 
 const sections: {group:string;items:{page:Page;label:string;icon:LucideIcon}[]}[] = [
@@ -55,7 +55,10 @@ export default function App(){
   const [file,setFile]=useState<File|null>(null);
   const [fileUrl,setFileUrl]=useState<string|null>(null);
   const [cover,setCover]=useState('Professional cover');
-  const [apiEndpoint,setApiEndpoint]=useState('');
+  const [apiEndpoint,setApiEndpoint]=useState(()=>{
+    if(window.location.hostname.endsWith('.github.io')||window.location.protocol==='file:')return '';
+    return window.location.origin;
+  });
   const [apiToken,setApiToken]=useState('');
   const [health,setHealth]=useState<Health|null>(null);
   const [liveFaxes,setLiveFaxes]=useState<Fax[]|null>(null);
@@ -78,10 +81,25 @@ export default function App(){
     return (f.title+' '+f.contact+' '+f.number+' '+f.id).toLowerCase().includes(filter.toLowerCase());
   }),[faxes,page,filter,folder]);
   useEffect(()=>{localStorage.setItem(localKey,JSON.stringify(drafts));},[drafts]);
+  useEffect(()=>{
+    // Restore a server-issued HttpOnly cookie after a refresh. Never persist API_TOKEN in JS storage.
+    const endpoint=window.location.origin;
+    if(window.location.hostname.endsWith('.github.io')||window.location.protocol==='file:')return;
+    let cancelled=false;
+    (async()=>{
+      const session=await getSession(endpoint);
+      if(!session.authenticated)return;
+      const [status,items,counters]=await Promise.all([
+        checkApi(endpoint),listFaxes(endpoint),getStats(endpoint)]);
+      if(cancelled)return;
+      setApiEndpoint(endpoint);setHealth(status);setLiveFaxes(items.map(serverToFax));setStats(counters);
+    })().catch(()=>{ /* Not signed in, or server unavailable: use preview until operator signs in. */ });
+    return ()=>{cancelled=true;};
+  },[]);
   useEffect(()=>{if(!toast)return;const timer=window.setTimeout(()=>setToast(''),4500);return ()=>clearTimeout(timer);},[toast]);
   useEffect(()=>{if(!file){setFileUrl(null);return;}const url=URL.createObjectURL(file);setFileUrl(url);return ()=>URL.revokeObjectURL(url);},[file]);
   async function refreshLive(endpoint=apiEndpoint,token=apiToken){
-    if(!endpoint.trim()||!token.trim())return;
+    if(!endpoint.trim())return;
     setRefreshing(true);
     try{
       const [items,counters]=await Promise.all([listFaxes(endpoint,token),getStats(endpoint,token)]);
@@ -90,7 +108,7 @@ export default function App(){
     finally{setRefreshing(false);}
   }
   async function downloadCurrent(){
-    if(activeFax.source!=='live'||!apiToken){setToast('Only live records with stored PDFs can be downloaded.');return;}
+    if(activeFax.source!=='live'){setToast('Only live records with stored PDFs can be downloaded.');return;}
     try{
       const file=await downloadFax(apiEndpoint,apiToken,activeFax.id);
       const url=URL.createObjectURL(file),a=document.createElement('a');
@@ -106,19 +124,38 @@ export default function App(){
     setDrafts(d=>[fax,...d]);setToast('Draft saved locally. Attached file bytes are not persisted in demo mode.');navigate('sent');
   }
   async function testConnection(){
-    if(!apiEndpoint.trim()){setToast('Enter an API server URL first.');return;}
-    setTesting(true);try{const res=await checkApi(apiEndpoint);setHealth(res);
-      if(apiToken.trim()){
-        try{const [items,counters]=await Promise.all([listFaxes(apiEndpoint,apiToken),getStats(apiEndpoint,apiToken)]);
-          setLiveFaxes(items.map(serverToFax));setStats(counters);}
-        catch(error){setHealth(null);setLiveFaxes(null);setStats(null);throw error;}
-      }else{setToast('Server online. Enter the operator API token to load real fax records.');return;}
-      setToast(res.faxEnabled?'Connected to Telnyx Fax API. Outbound pilot enabled.':'Connected to live records; outbound fax sending is locked.');}catch(e){setHealth(null);setLiveFaxes(null);setStats(null);setToast(e instanceof Error?e.message:'Could not connect to API');}finally{setTesting(false);}
+    const endpoint=apiEndpoint.trim().replace(/\/$/,'');
+    if(!endpoint){setToast('Enter the FaxingPro API URL first.');return;}
+    if(new URL(endpoint).origin!==window.location.origin){
+      setToast('For security, open and sign in directly on the FaxingPro HTTPS website.');return;
+    }
+    setTesting(true);
+    try{
+      const status=await checkApi(endpoint);
+      const session=apiToken.trim()
+        ? await createSession(endpoint,apiToken.trim())
+        : await getSession(endpoint);
+      if(!session.authenticated){
+        setToast('Enter your API_TOKEN to sign in.');return;
+      }
+      const [items,counters]=await Promise.all([listFaxes(endpoint),getStats(endpoint)]);
+      setHealth(status);setLiveFaxes(items.map(serverToFax));setStats(counters);
+      setApiToken('');
+      setToast('Connected securely. Your login stays active for 7 days unless you sign out.');
+    }catch(error){
+      setHealth(null);setLiveFaxes(null);setStats(null);
+      setToast(error instanceof Error?error.message:'Could not sign in');
+    }finally{setTesting(false);}
+  }
+  async function signOut(){
+    try{await destroySession(apiEndpoint);}
+    catch(error){setToast(error instanceof Error?error.message:'Unable to sign out');return;}
+    setApiToken('');setHealth(null);setLiveFaxes(null);setStats(null);
+    setToast('Signed out. Your operator session was revoked.');
   }
   async function sendFax(){
     if(!recipient.trim()||!file){setToast('A recipient and PDF document are required.');return;}
     if(!health?.faxEnabled || !apiEndpoint.trim() || liveFaxes===null){setToast('Fax transport is not configured. Save a local draft instead.');return;}
-    if(!apiToken){setToast('Enter your server API token in Settings.');return;}
     if(!/^\+?[0-9 ()-]{7,24}$/.test(recipient)){setToast('Enter a valid telephone number.');return;}
     setSubmitting(true);try{
       const contentBase64=await readBase64(file);
@@ -200,7 +237,7 @@ export default function App(){
         <div className="page-heading"><div><span className="eyebrow">SYSTEM ADMINISTRATION</span><h1>{titleFor(page)}</h1><p>Configure your self-hosted FaxingPro installation.</p></div></div>
         <div className="settings-layout"><div className="settings-menu">{[['General','settings'],['API Connection','settings'],['Server Health','server'],['SIP & T.38','sip'],['Security','security']].map(([name,target])=><button className={(page===target&&(page!=='settings'||settingsTab===name))?'selected':''} key={name} onClick={()=>{setPage(target as Page);setSettingsTab(name);}}>{name}<ChevronRight size={15}/></button>)}</div><div className="settings-content">
           {page==='settings'&&settingsTab==='General'&&<Panel title="Workspace preferences"><div className="settings-card"><Settings2 size={22}/><div><strong>ATLAS design system</strong><p>Premium enterprise layout, midnight navigation, and teal accents.</p></div><span className="status status-received">Enabled</span></div><div className="settings-card"><Cloud size={22}/><div><strong>Local preview mode</strong><p>Sample data is bundled with the desktop and web interface.</p></div><span className="status status-queued">Demo</span></div><div className="settings-card"><HardDrive size={22}/><div><strong>Draft persistence</strong><p>Only draft metadata is saved to local storage. Files are not persisted.</p></div></div></Panel>}
-          {page==='settings'&&settingsTab==='API Connection'&&<Panel title="Connect your self-hosted server"><div className="settings-fields"><label>API base URL<input placeholder="https://fax.example.com" value={apiEndpoint} onChange={e=>{setApiEndpoint(e.target.value);setHealth(null);setLiveFaxes(null);setStats(null);}}/></label><label>API bearer token<input type="password" placeholder="Enter API_TOKEN from your server" value={apiToken} onChange={e=>setApiToken(e.target.value)}/></label><p>Credentials stay in memory, not local storage. Only connect to a private trusted HTTPS FaxingPro installation or local SSH tunnel. Never enter a live operator token on the public GitHub Pages demo.</p><button className="btn primary" disabled={testing} onClick={testConnection}><RefreshCw size={17}/>{testing?'Checking...':'Test connection'}</button>{health&&<div className="connection-result"><CheckCircle2 size={17}/> Connected: {health.service} · transport: {health.transport} · fax: {health.faxEnabled?'enabled':'disabled'}</div>}</div></Panel>}
+          {page==='settings'&&settingsTab==='API Connection'&&<Panel title="Connect your self-hosted server"><div className="settings-fields"><label>API base URL<input placeholder="https://fax.example.com" value={apiEndpoint} onChange={e=>{setApiEndpoint(e.target.value);setHealth(null);setLiveFaxes(null);setStats(null);}}/></label><label>Operator API token (sign in once)<input type="password" autoComplete="off" placeholder={liveFaxes!==null?'Signed in — token not stored in browser':'Enter API_TOKEN from your VPS'} value={apiToken} onChange={e=>setApiToken(e.target.value)}/></label><p>Your API_TOKEN is exchanged once for a secure HttpOnly session cookie valid for 7 days. The token is never saved in browser storage and is cleared from this form after sign-in. Use only your trusted FaxingPro HTTPS website, never the public GitHub Pages demo.</p><button className="btn primary" disabled={testing} onClick={testConnection}><RefreshCw size={17}/>{testing?'Connecting...':liveFaxes!==null?'Refresh connection':'Sign in & connect'}</button>{liveFaxes!==null&&<button className="btn secondary" onClick={signOut}><LockKeyhole size={17}/> Sign out</button>}{health&&<div className="connection-result"><CheckCircle2 size={17}/> Connected: {health.service} · transport: {health.transport} · fax: {health.faxEnabled?'enabled':'disabled'}</div>}</div></Panel>}
           {page==='server'&&<Panel title="Server health"><div className="settings-card"><Server size={22}/><div><strong>FaxingPro API</strong><p>{health?health.service+' is responding':'Not connected. Configure your API connection in Settings.'}</p></div><span className={'status '+(health?'status-received':'status-queued')}>{health?'Online':'Unknown'}</span></div><div className="settings-card"><Cloud size={22}/><div><strong>Transmission provider</strong><p>{health?health.transport:'No FreeSWITCH transport configured'}</p></div></div><button className="btn secondary" onClick={()=>{setPage('settings');setSettingsTab('API Connection');}}>Configure connection <ArrowRight size={16}/></button></Panel>}
           {page==='sip'&&<Panel title="SIP trunk & fax transport"><div className="settings-card"><Phone size={22}/><div><strong>{health?.transport==='telnyx-fax-api'?'Telnyx Programmable Fax':'SIP trunk (alternative)'}</strong><p>{health?.transport==='telnyx-fax-api'?'Managed by Telnyx. Verify your Fax Application ID, purchased DID, public webhook, and account permissions on the VPS.':'No self-hosted SIP gateway configured.'}</p></div><span className="status status-failed">Not configured</span></div><div className="settings-card"><Wifi size={22}/><div><strong>Fax transport</strong><p>{health?.transport==='telnyx-fax-api'?'T.38 and G.711 processing are managed by Telnyx Fax API.':'Self-hosted SIP/T.38 is an optional alternative requiring a separate gateway.'}</p></div></div><div className="notice inner"><AlertTriangle size={18}/><div><strong>{health?.faxEnabled?'Outbound test enabled':'Outbound is locked'}</strong><span>Only Telnyx fax.delivered confirms delivery; API acceptance is not a delivery receipt.</span></div></div></Panel>}
           {page==='security'&&<Panel title="Security posture"><div className="settings-card"><ShieldCheck size={22}/><div><strong>API token</strong><p>Server calls require an operator-generated secret.</p></div></div><div className="settings-card"><LockKeyhole size={22}/><div><strong>HTTPS</strong><p>Use a trusted reverse proxy; never expose the API token over HTTP.</p></div></div><div className="settings-card"><Archive size={22}/><div><strong>Encrypted storage & roles</strong><p>The Telnyx pilot encrypts PDF volumes with AES-256-GCM. Multi-user roles, MFA, retention and key rotation remain production requirements.</p></div></div></Panel>}
