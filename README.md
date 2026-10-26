@@ -258,7 +258,11 @@ The included Node API rejects startup if `API_TOKEN` contains fewer than **32 ch
 
 **Not included** in the current containers: FreeSWITCH, SpanDSP, SIP trunks, PostgreSQL, Redis, encrypted document storage or production account management.
 
-## Telnyx SIP/T.38 (Ubuntu VPS)
+## Telnyx Programmable Fax API pilot (new)
+
+The [Telnyx API deployment guide](docs/TELNYX_API_DEPLOYMENT.md) covers persistent PostgreSQL records, inbound PDF capture, verified webhooks and a test-only outbound path on your VPS. This avoids FreeSWITCH and SignalWire. The existing MooBee services stay separate, and real sending remains **disabled by default**.
+
+## Telnyx SIP/T.38 (Ubuntu VPS) — optional alternative
 
 Already have a Telnyx phone number? Follow the [Telnyx VPS integration runbook](docs/TELNYX_VPS_INTEGRATION.md) for the SIP trunk, T.38, FreeSWITCH, firewall, and test requirements.
 
