@@ -7,7 +7,10 @@ on:
       - 'server/telnyx*'
       - 'deployment/telnyx/**'
       - 'deployment/nginx.conf'
-      - 'tests/telnyx.test.mjs'
+      - 'tests/telnyx*.mjs'
+      - 'tests/prepare-telnyx-ci.mjs'
+      - 'src/api.ts'
+      - 'src/App.tsx'
       - '.github/workflows/telnyx-ci.yml'
   pull_request:
     branches: [main]
