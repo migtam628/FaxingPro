@@ -36,7 +36,7 @@ Put these in DB_PASSWORD, API_TOKEN, MEDIA_SIGNING_SECRET and STORAGE_ENCRYPTION
 
 1. In Telnyx Mission Control, open Programmable Fax → Applications and create FaxingPro-Production. Copy its Application ID to TELNYX_FAX_APP_ID.
 2. Under API Keys, create an API V2 key. Save it on your VPS only as TELNYX_API_KEY.
-3. Under account Keys & Credentials → Public Key, copy the Ed25519 webhook verification public key into TELNYX_PUBLIC_KEY.
+3. Under account Keys & Credentials → Public Key, copy the Ed25519 webhook verification public key into TELNYX_PUBLIC_KEY. The portal typically displays a Base64-encoded public key (44 characters ending in '='). The API now accepts Base64, hex, or PEM. This public key is not an API token; don't rotate it merely to set up FaxingPro.
 4. Set your purchased DID in E.164 format (+1...) as TELNYX_FROM_NUMBER.
 5. Choose an HTTPS hostname that you own, e.g. fax.example.com, and set TELNYX_PUBLIC_BASE_URL to that exact HTTPS origin. Replace the example value.
 6. Connect the Fax Application to an Outbound Voice Profile. Limit destinations and expenditures for pilot testing.
