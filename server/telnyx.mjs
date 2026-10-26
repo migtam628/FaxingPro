@@ -1,0 +1,207 @@
+import http from 'node:http';
+import {randomUUID,timingSafeEqual} from 'node:crypto';
+import {mkdir,readFile,writeFile,unlink} from 'node:fs/promises';
+import path from 'node:path';
+import pg from 'pg';
+import {e164US,pdfValid,cleanName,statusFor,webhookKey,verifyWebhook,
+  signMedia,mediaAuthorized,safeIncomingUrl} from './telnyx-utils.mjs';
+
+const e=process.env, port=Number(e.PORT||8088), dir=e.FILE_DIR||'/data/files';
+const secret=e.API_TOKEN||'', mediaSecret=e.MEDIA_SIGNING_SECRET||'';
+const base=(e.TELNYX_PUBLIC_BASE_URL||'').replace(/\/$/,'');
+const faxApp=e.TELNYX_FAX_APP_ID||'',did=e.TELNYX_FROM_NUMBER||'';
+const sending=e.SEND_ENABLED==='true',destination=e.TEST_DESTINATION||'';
+if(!e.DATABASE_URL||secret.length<32||mediaSecret.length<32||!e.TELNYX_PUBLIC_KEY||
+  /^(REPLACE_|PASTE_|YOUR_)/i.test(secret))throw Error('Missing safe backend configuration');
+if(sending&&(!e.TELNYX_API_KEY||!faxApp||!e164US(did)||!e164US(destination)||
+  !base.startsWith('https://')))throw Error('Enable sending only with Telnyx credentials, US DID, test destination and HTTPS origin');
+const key=webhookKey(e.TELNYX_PUBLIC_KEY);
+const db=new pg.Pool({connectionString:e.DATABASE_URL,max:5,connectionTimeoutMillis:5000});
+const output=(r,s,data)=>{r.writeHead(s,{'Content-Type':'application/json','Cache-Control':'no-store',
+  'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY'});r.end(JSON.stringify(data));};
+const authed=req=>{const a=Buffer.from((req.headers.authorization||'').replace(/^Bearer\s+/i,'')),b=Buffer.from(secret);
+  return a.length===b.length&&timingSafeEqual(a,b);};
+const body=async(req,limit)=>{let len=0;const chunks=[];for await(const c of req){len+=c.length;
+  if(len>limit)throw Error('Body exceeds size limit');chunks.push(c);}return Buffer.concat(chunks);};
+const row=r=>({id:r.id,telnyxId:r.telnyx_id,direction:r.direction,status:r.status,
+  from:r.from_number,to:r.to_number,title:r.title,filename:r.filename,pages:r.pages,
+  createdAt:r.created_at,updatedAt:r.updated_at,failureReason:r.failure_reason,
+  hasDocument:!!r.file_name});
+const setup=async()=>{
+  await mkdir(dir,{recursive:true,mode:0o700});
+  await db.query("CREATE TABLE IF NOT EXISTS faxes ("+
+    "id UUID PRIMARY KEY,telnyx_id TEXT UNIQUE,client_key TEXT UNIQUE,"+
+    "direction TEXT NOT NULL,status TEXT NOT NULL,from_number TEXT NOT NULL,to_number TEXT NOT NULL,"+
+    "title TEXT NOT NULL,filename TEXT,file_name TEXT,pages INTEGER NOT NULL DEFAULT 0,"+
+    "media_url TEXT,download_state TEXT,failure_reason TEXT,"+
+    "last_event_at TIMESTAMPTZ DEFAULT now(),created_at TIMESTAMPTZ DEFAULT now(),updated_at TIMESTAMPTZ DEFAULT now())");
+  await db.query("CREATE TABLE IF NOT EXISTS webhook_events ("+
+    "id TEXT PRIMARY KEY,fax_id TEXT,event_type TEXT,occurred_at TIMESTAMPTZ,received_at TIMESTAMPTZ DEFAULT now())");
+  await db.query("CREATE INDEX IF NOT EXISTS faxes_created_at_idx ON faxes(created_at DESC)");
+};
+const telnyx=async(record,link)=>{
+  const ctl=new AbortController(),timeout=setTimeout(()=>ctl.abort(),15000);
+  try{
+    const r=await fetch('https://api.telnyx.com/v2/faxes',{method:'POST',signal:ctl.signal,
+      headers:{Authorization:'Bearer '+e.TELNYX_API_KEY,'Content-Type':'application/json',Accept:'application/json'},
+      body:JSON.stringify({connection_id:faxApp,from:did,to:record.to,media_url:link,
+        client_state:Buffer.from(record.id).toString('base64')})});
+    if(r.status!==202)throw Error('Telnyx returned HTTP '+r.status);
+    return (await r.json()).data||{};
+  }finally{clearTimeout(timeout);}
+};
+const postFax=async(req,res)=>{
+  if(!sending)return output(res,503,{error:'Outbound fax is locked until SEND_ENABLED=true and the first test is approved'});
+  let v;try{v=JSON.parse((await body(req,14*1024*1024+2048)).toString());}
+  catch{return output(res,400,{error:'Invalid or oversized JSON body'});}
+  if(!e164US(v.recipient)||v.recipient!==destination)
+    return output(res,403,{error:'Destination must match the authorized TEST_DESTINATION'});
+  if(typeof v.contentBase64!=='string'||v.contentBase64.length>14*1024*1024||
+    !/^[a-zA-Z0-9+/]+={0,2}$/.test(v.contentBase64))
+    return output(res,400,{error:'Invalid PDF encoding'});
+  const data=Buffer.from(v.contentBase64,'base64');
+  if(!pdfValid(data))return output(res,400,{error:'PDF must be valid and no more than 10 MB'});
+  const id=randomUUID(),reqId=typeof v.requestId==='string'&&/^[0-9a-f-]{36}$/i.test(v.requestId)?v.requestId:id;
+  const old=await db.query('SELECT * FROM faxes WHERE client_key=$1',[reqId]);
+  if(old.rows.length)return output(res,200,row(old.rows[0]));
+  const filename=cleanName(v.filename||'document.pdf'),title=String(v.title||filename).slice(0,160);
+  const file=id+'.pdf';await writeFile(path.join(dir,file),data,{mode:0o600,flag:'wx'});
+  try{await db.query("INSERT INTO faxes(id,client_key,direction,status,from_number,to_number,title,filename,file_name)"+
+    " VALUES($1,$2,'outbound','submitting',$3,$4,$5,$6,$7)",[id,reqId,did,v.recipient,title,filename,file]);}
+  catch(err){await unlink(path.join(dir,file)).catch(()=>{});throw err;}
+  const expires=Math.floor(Date.now()/1000)+3600;
+  const link=base+'/media/outbound/'+id+'?exp='+expires+'&sig='+signMedia(mediaSecret,id,expires);
+  try{
+    const result=await telnyx({id,to:v.recipient},link);
+    await db.query("UPDATE faxes SET telnyx_id=COALESCE(telnyx_id,$2),"+
+      "status=CASE WHEN status='submitting' THEN 'queued' ELSE status END,updated_at=now() WHERE id=$1",
+      [id,result.id||null]);
+    const cur=await db.query('SELECT * FROM faxes WHERE id=$1',[id]);
+    return output(res,202,row(cur.rows[0]));
+  }catch{
+    // Telnyx may accept a request even if the HTTPS response is lost. Do not retry automatically.
+    await db.query("UPDATE faxes SET status='unknown',"+
+      "failure_reason='Check Telnyx before resubmitting',updated_at=now()"+
+      " WHERE id=$1 AND status='submitting'",[id]);
+    return output(res,502,{error:'Submission outcome unknown. Reconcile in Telnyx before retrying.',id});
+  }
+};
+const webhook=async(req,res)=>{
+  const raw=await body(req,512*1024);
+  if(!verifyWebhook(raw,req.headers,key))return output(res,401,{error:'Invalid webhook signature'});
+  let incoming;try{incoming=JSON.parse(raw.toString());}catch{return output(res,400,{error:'Invalid webhook JSON'});}
+  const event=incoming.data||incoming, payload=event.payload||{};
+  const state=statusFor(event.event_type),eventId=event.id,faxId=payload.fax_id;
+  if(!state||typeof eventId!=='string'||typeof faxId!=='string'||
+    !['inbound','outbound'].includes(payload.direction))
+    return output(res,200,{ok:true,ignored:true});
+  if(faxApp&&payload.connection_id&&payload.connection_id!==faxApp)
+    return output(res,200,{ok:true,ignored:true});
+  let clientId=null;
+  try{const id=Buffer.from(payload.client_state||'','base64').toString();
+    if(/^[0-9a-f-]{36}$/i.test(id))clientId=id;}catch{}
+  const eventAt=!Number.isNaN(Date.parse(event.occurred_at))?new Date(event.occurred_at):new Date();
+  const conn=await db.connect();
+  try{
+    await conn.query('BEGIN');
+    const inserted=await conn.query("INSERT INTO webhook_events(id,fax_id,event_type,occurred_at)"+
+      " VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id",
+      [eventId,faxId,event.event_type,eventAt]);
+    if(!inserted.rowCount){await conn.query('COMMIT');return output(res,200,{ok:true,duplicate:true});}
+    const media=event.event_type==='fax.received'?String(payload.media_url||''):'';
+    if(payload.direction==='inbound'){
+      await conn.query("INSERT INTO faxes(id,telnyx_id,direction,status,from_number,to_number,title,pages,media_url,download_state,last_event_at)"+
+        " VALUES($1,$2,'inbound',$3,$4,$5,'Incoming fax',$6,$7,$8,$9) ON CONFLICT(telnyx_id) DO NOTHING",
+        [randomUUID(),faxId,state,String(payload.from||''),String(payload.to||''),
+          Number(payload.page_count)||0,media||null,media?'pending':null,eventAt]);
+    }
+    await conn.query("UPDATE faxes SET "+
+      "status=CASE WHEN last_event_at<=$2 AND status NOT IN ('delivered','received','failed') THEN $3 ELSE status END,"+
+      "pages=GREATEST(pages,$4),failure_reason=CASE WHEN $3='failed' THEN $5 ELSE failure_reason END,"+
+      "media_url=CASE WHEN $3='received' AND $6<>'' THEN $6 ELSE media_url END,"+
+      "download_state=CASE WHEN $3='received' AND $6<>'' AND file_name IS NULL THEN 'pending' ELSE download_state END,"+
+      "last_event_at=GREATEST(last_event_at,$2),updated_at=now(),telnyx_id=COALESCE(telnyx_id,$1)"+
+      " WHERE telnyx_id=$1 OR ($7::uuid IS NOT NULL AND id=$7::uuid)",
+      [faxId,eventAt,state,Number(payload.page_count)||0,String(payload.failure_reason||''),media,clientId]);
+    await conn.query('COMMIT');
+  }catch(err){await conn.query('ROLLBACK');throw err;}finally{conn.release();}
+  return output(res,200,{ok:true});
+};
+let fetching=false;
+const capture=async()=>{
+  if(fetching)return;fetching=true;
+  try{
+    const {rows}=await db.query("SELECT id,media_url FROM faxes WHERE direction='inbound'"+
+      " AND download_state='pending' AND media_url IS NOT NULL AND media_url<>'' ORDER BY created_at LIMIT 4");
+    for(const item of rows){
+      const url=safeIncomingUrl(item.media_url);
+      if(!url){await db.query("UPDATE faxes SET download_state='blocked' WHERE id=$1",[item.id]);continue;}
+      try{
+        const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+        let response;try{response=await fetch(url,{redirect:'error',signal:ctl.signal});}finally{clearTimeout(timer);}
+        if(!response.ok||Number(response.headers.get('content-length')||0)>10*1024*1024)throw Error('Invalid media response');
+        const pdf=Buffer.from(await response.arrayBuffer());
+        if(!pdfValid(pdf))throw Error('Invalid inbound PDF');
+        const name=item.id+'.pdf';
+        await writeFile(path.join(dir,name),pdf,{mode:0o600,flag:'wx'}).catch(err=>{if(err.code!=='EEXIST')throw err;});
+        await db.query("UPDATE faxes SET file_name=$2,filename='received.pdf',"+
+          "download_state='saved',media_url=NULL,updated_at=now() WHERE id=$1",[item.id,name]);
+      }catch(err){console.error('Inbound PDF capture pending: '+item.id+' ('+err.message+')');}
+    }
+  }catch(err){console.error('Inbound worker:',err.message);}finally{fetching=false;}
+};
+const app=http.createServer(async(req,res)=>{
+  const url=new URL(req.url||'/','http://localhost'),p=url.pathname;
+  const origin=req.headers.origin;
+  const allowed=[base,'http://localhost:8092','http://127.0.0.1:8092'];
+  if(origin&&!allowed.includes(origin))return output(res,403,{error:'Origin is not permitted'});
+  try{
+    if(req.method==='GET'&&p==='/healthz'){
+      await db.query('SELECT 1');
+      return output(res,200,{ok:true,service:'FaxingPro Telnyx API',transport:'telnyx-fax-api',faxEnabled:sending});
+    }
+    if(req.method==='POST'&&p==='/webhooks/telnyx')return await webhook(req,res);
+    const media=p.match(/^\/media\/outbound\/([0-9a-f-]{36})$/i);
+    if(req.method==='GET'&&media){
+      if(!mediaAuthorized(mediaSecret,media[1],url.searchParams.get('exp'),url.searchParams.get('sig')))
+        return output(res,403,{error:'Media link expired or invalid'});
+      const {rows}=await db.query("SELECT file_name FROM faxes WHERE id=$1 AND direction='outbound'",[media[1]]);
+      if(!rows[0]?.file_name)return output(res,404,{error:'Not found'});
+      const pdf=await readFile(path.join(dir,rows[0].file_name));
+      res.writeHead(200,{'Content-Type':'application/pdf','Cache-Control':'no-store',
+        'X-Content-Type-Options':'nosniff'});return res.end(pdf);
+    }
+    if(p.startsWith('/api/')){
+      if(!authed(req))return output(res,401,{error:'Unauthorized'});
+      if(req.method==='GET'&&p==='/api/capabilities')
+        return output(res,200,{transport:'telnyx-fax-api',inbound:true,outbound:sending});
+      if(req.method==='GET'&&p==='/api/faxes'){
+        const {rows}=await db.query('SELECT * FROM faxes ORDER BY created_at DESC LIMIT 100');
+        return output(res,200,{items:rows.map(row)});
+      }
+      if(req.method==='GET'&&p==='/api/stats'){
+        const {rows}=await db.query("SELECT "+
+          "count(*) FILTER(WHERE direction='inbound' AND status='received')::int received,"+
+          "count(*) FILTER(WHERE direction='outbound' AND status='delivered')::int sent,"+
+          "count(*) FILTER(WHERE direction='outbound' AND status NOT IN ('delivered','failed'))::int pending,"+
+          "count(*) FILTER(WHERE status='failed')::int failed FROM faxes");
+        return output(res,200,rows[0]);
+      }
+      if(req.method==='POST'&&p==='/api/faxes')return await postFax(req,res);
+      const doc=p.match(/^\/api\/faxes\/([0-9a-f-]{36})\/document$/i);
+      if(req.method==='GET'&&doc){
+        const {rows}=await db.query('SELECT file_name,filename FROM faxes WHERE id=$1',[doc[1]]);
+        if(!rows[0]?.file_name)return output(res,404,{error:'Document not stored'});
+        const pdf=await readFile(path.join(dir,rows[0].file_name));
+        res.writeHead(200,{'Content-Type':'application/pdf','Cache-Control':'private,no-store',
+          'Content-Disposition':'attachment; filename="'+cleanName(rows[0].filename)+'"',
+          'X-Content-Type-Options':'nosniff'});return res.end(pdf);
+      }
+    }
+    return output(res,404,{error:'Unknown endpoint'});
+  }catch(err){console.error('Request error:',err.message);if(!res.headersSent)output(res,500,{error:'Internal server error'});else res.end();}
+});
+app.requestTimeout=30000;app.headersTimeout=10000;
+await setup();
+app.listen(Number(e.PORT||8088),'0.0.0.0',()=>console.log('FaxingPro Telnyx API started (sending: '+sending+')'));
+setInterval(capture,5000).unref();
