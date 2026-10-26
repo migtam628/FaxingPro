@@ -35,6 +35,18 @@ docker run --rm --network none faxingpro-freeswitch:bookworm sh -c 'command -v f
 
 If the repository returns HTTP 401/403, verify the SignalWire account, token access, and FreeSWITCH community package entitlements. If the Bookworm package name or availability changes, **stop rather than using older Debian/Ubuntu repos**. Do not bypass TLS verification.
 
+## HTTP 401 or 403 during package authentication
+
+The official FreeSWITCH signing-key URL requires SignalWire repository authorization. A 401 means the supplied SignalWire Personal Access Token (PAT) was not accepted for that request; 403 also requires an access/entitlement check. This is separate from Telnyx SIP credentials.
+
+The build helper now checks the signing-key URL **before** starting Docker. It prints only the HTTP result, not the PAT, and removes temporary authentication files on exit.
+
+1. In your SignalWire Space, open the profile menu and create a fresh **Personal Access Token**. Do not use a Telnyx API token or SIP password.
+2. Run the helper from a local terminal with a hidden prompt. If it returns HTTP 200, the image build starts normally.
+3. If a freshly created PAT still returns HTTP 401 or 403, stop repeating the build and contact SignalWire support about **community FreeSWITCH Debian 12 Bookworm package access** for your SignalWire Space.
+4. Building FreeSWITCH from the official open-source repository is another route, but it needs a separate, supported dependency and module build plan. Do not substitute packages for unrelated Debian releases or disable TLS validation.
+
+Official documentation: https://signalwire.com/docs/platform/freeswitch/installing-freeswitch
 ## Later phases (not completed)
 
 1. Stage a restricted FreeSWITCH configuration with unique admin/internal SIP credentials, Event Socket on loopback, no sample toll dialplans, and Sofia external profile on the agreed port.
