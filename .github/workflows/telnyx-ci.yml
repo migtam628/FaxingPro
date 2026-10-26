@@ -33,6 +33,7 @@ jobs:
         run: npm test
       - name: Validate isolated Docker Compose configuration
         run: |
+          cp deployment/telnyx/.env.example deployment/telnyx/.env
           docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env.example config --quiet
       - name: Build FaxingPro Telnyx API container
         run: docker build -f server/telnyx.Dockerfile -t faxingpro-telnyx-api:ci .
