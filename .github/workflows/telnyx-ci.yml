@@ -31,9 +31,16 @@ jobs:
           node --check server/telnyx-utils.mjs
       - name: Run API and webhook security tests
         run: npm test
+      - name: Prepare ephemeral signed-webhook fixture and Compose secrets
+        run: node tests/prepare-telnyx-ci.mjs
       - name: Validate isolated Docker Compose configuration
-        run: |
-          cp deployment/telnyx/.env.example deployment/telnyx/.env
-          docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env.example config --quiet
+        run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env config --quiet
       - name: Build FaxingPro Telnyx API container
         run: docker build -f server/telnyx.Dockerfile -t faxingpro-telnyx-api:ci .
+      - name: Start isolated pilot stack with sending disabled
+        run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --build
+      - name: Verify signed webhooks, auth, and persistent fax rows
+        run: node tests/telnyx-smoke.mjs
+      - name: Shutdown test stack
+        if: always()
+        run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env down || true
