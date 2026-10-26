@@ -1,0 +1,104 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Tests and web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: API tests
+        run: npm test
+      - name: Build web app
+        run: npm run build
+
+  package:
+    name: Package ${{ matrix.os }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            flags: --win nsis --x64
+          - os: macos-latest
+            flags: --mac dmg --x64 --arm64
+          - os: ubuntu-latest
+            flags: --linux AppImage deb --x64
+    runs-on: ${{ matrix.os }}
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build client
+        run: npm run build
+      - name: Create desktop installers
+        run: npx electron-builder ${{ matrix.flags }} --publish never
+      - name: Upload packaged applications
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub Release
+    if: github.event_name != 'pull_request'
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: release-files
+          merge-multiple: true
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release-files/*.exe release-files/*.dmg release-files/*.AppImage release-files/*.deb)
+          if [ "${#files[@]}" -lt 4 ]; then
+            echo "Expected multi-platform installers; got ${#files[@]}" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            gh release create "$tag" "${files[@]}" --verify-tag --title "FaxingPro $tag" --generate-notes
+          else
+            tag="v0.1.0-preview.${GITHUB_RUN_NUMBER}"
+            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "FaxingPro $tag" --prerelease --notes "Preview desktop builds for Windows, macOS (Intel/Apple silicon), and Linux. The web UI runs in demo mode. PSTN/SIP fax delivery is not implemented in this preview."
+          fi
