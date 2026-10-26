@@ -2,6 +2,14 @@
 
 **Status: integration preparation, NOT live fax service.** You already purchased a Telnyx DID. This guide assumes that a Linux VPS will host the fax engine. The public GitHub Pages site remains a static demo.
 
+## Update: VPS diagnostics and safe Debian image staging (October 26, 2026)
+
+Your VPS is **Ubuntu 26.04 x86_64**, with **2 CPU cores, 7.3 GiB RAM and an existing Docker installation**. It has sufficient resources for a controlled, low-concurrency fax pilot. Its native configured apt repositories have no FreeSWITCH package, and its MooBee Caddy already owns public ports 80/443.
+
+Use the [staged Debian 12 FreeSWITCH image build](../deployment/freeswitch/README.md) first. It requires a **SignalWire PAT** (separate from Telnyx) and **only builds a container image**. This does not open SIP ports, start the PBX, change your firewall, or route your existing DID.
+
+**Do not route the Telnyx DID or open SIP to the public internet yet.** Once the image build succeeds, configure and harden Sofia, ESL and dialplans before starting the first call.
+
 ## 1. Run the safe read-only preflight
 
 On the actual intended VPS:
