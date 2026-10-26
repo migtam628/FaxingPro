@@ -29,6 +29,17 @@ test('Ed25519 verification checks exact body, timestamp, signature and key', () 
   assert.equal(verifyWebhook(Buffer.from('{"data":{}}'),headers,key),false);
   assert.equal(verifyWebhook(body,{...headers,'telnyx-timestamp':String(Number(ts)-600)},key),false);
 });
+test('accepts Base64-formatted Telnyx public signing key', () => {
+  const {publicKey,privateKey}=generateKeyPairSync('ed25519');
+  const raw=publicKey.export({format:'der',type:'spki'}).subarray(-32);
+  const key=webhookKey(raw.toString('base64'));
+  const body=Buffer.from('{"data":{"event_type":"fax.received"}}');
+  const stamp=String(Math.floor(Date.now()/1000));
+  const signature=sign(null,Buffer.concat([Buffer.from(stamp+'|'),body]),privateKey).toString('base64');
+  assert.equal(verifyWebhook(body,{'telnyx-timestamp':stamp,'telnyx-signature-ed25519':signature},key),true);
+  assert.throws(()=>webhookKey('not-a-key'));
+});
+
 test('blocks SSRF through unexpected inbound media hosts', () => {
   assert.equal(safeIncomingUrl('https://s3.us-east-1.amazonaws.com/fax.pdf')!==null,true);
   assert.equal(safeIncomingUrl('http://127.0.0.1/metadata'),null);
