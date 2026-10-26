@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
-  BookUser, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
+  BookUser, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
   CircleHelp, Clock3, Cloud, Download, FilePlus2, FileText, Filter, FolderOpen,
   HardDrive, Inbox, LayoutDashboard, LifeBuoy, LockKeyhole, Menu, MoreHorizontal,
-  Phone, Plus, Printer, Search, Send, Server, Settings2, ShieldCheck, SlidersHorizontal,
-  Trash2, UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi, Copy,
+  Phone, Plus, Printer, Search, Send, Server, Settings2, ShieldCheck,
+  Trash2, UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
   type LucideIcon } from 'lucide-react';
 import { demoFaxes, contacts } from './demo';
 import { checkApi, submitFax, type Health } from './api';
@@ -26,7 +26,6 @@ const sections: {group:string;items:{page:Page;label:string;icon:LucideIcon}[]}[
 const titleFor = (p: Page) => p==='viewer' ? 'Document Viewer' : sections.flatMap(s=>s.items).find(s=>s.page===p)?.label || 'FaxHub';
 const statusClass = (status:FaxStatus) => 'status status-' + status;
 const prettyStatus = (s:FaxStatus) => s[0].toUpperCase()+s.substring(1);
-const initials = (s:string) => s.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
 const demoBars = [30,43,37,52,44,65,51,72,58,79,64,89,76,67,81,59,85,70,90,76,94,82,73,88,70,91,84,69];
 function IconBadge({icon:Icon,kind='blue'}:{icon:LucideIcon;kind?:string}) {return <span className={'icon-badge badge-'+kind}><Icon size={18}/></span>;}
 function Status({value}:{value:FaxStatus}) {return <span className={statusClass(value)}><span className="status-dot"/>{prettyStatus(value)}</span>;}
