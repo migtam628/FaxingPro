@@ -28,11 +28,21 @@ export function mediaAuthorized(secret, id, expires, sig, now = Date.now()) {
 }
 
 export function webhookKey(publicKey) {
-  if (publicKey.includes('BEGIN PUBLIC KEY')) return createPublicKey(publicKey);
-  const hex = publicKey.replace(/\s+/g, '');
-  if (!/^[a-f0-9]{64}$/i.test(hex)) throw new Error('TELNYX_PUBLIC_KEY must be a 32-byte hex Ed25519 key or PEM public key');
+  if (typeof publicKey !== 'string') throw new Error('TELNYX_PUBLIC_KEY is required');
+  const trimmed = publicKey.trim();
+  if (trimmed.includes('BEGIN PUBLIC KEY')) return createPublicKey(trimmed);
+  // Telnyx Mission Control displays an Ed25519 public key as Base64 (32 raw bytes).
+  // Hex and PEM formats remain accepted for existing deployments.
+  const keyBytes = /^[a-f0-9]{64}$/i.test(trimmed)
+    ? Buffer.from(trimmed, 'hex')
+    : /^[A-Za-z0-9+/]{43}=$/.test(trimmed)
+      ? Buffer.from(trimmed, 'base64')
+      : null;
+  if (!keyBytes || keyBytes.length !== 32) {
+    throw new Error('TELNYX_PUBLIC_KEY must be 32-byte Base64, hex, or PEM Ed25519 public key');
+  }
   return createPublicKey({key: Buffer.concat([
-    Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(hex, 'hex')
+    Buffer.from('302a300506032b6570032100', 'hex'), keyBytes
   ]), format: 'der', type: 'spki'});
 }
 export function verifyWebhook(body, headers, key, now = Date.now()) {
