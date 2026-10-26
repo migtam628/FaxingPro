@@ -23,6 +23,25 @@ assert.ok(ok,'Telnyx pilot backend failed to become healthy');
 assert.equal((await request('/api/faxes')).status,401);
 assert.equal((await request('/api/faxes',{headers:auth})).status,200);
 
+const noLogin=await request('/api/session');
+assert.equal(noLogin.status,200);
+assert.equal((await noLogin.json()).authenticated,false);
+const incorrect=await request('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({token:'incorrect'})});
+assert.equal(incorrect.status,401);
+const signedIn=await request('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({token:env.API_TOKEN})});
+assert.equal(signedIn.status,200);
+assert.equal((await signedIn.json()).authenticated,true);
+const cookie=signedIn.headers.get('set-cookie')?.split(';')[0];
+assert.ok(cookie?.startsWith('__Host-faxingpro_session='));
+assert.ok(signedIn.headers.get('set-cookie')?.includes('HttpOnly'));
+assert.ok(signedIn.headers.get('set-cookie')?.includes('Secure'));
+assert.ok(signedIn.headers.get('set-cookie')?.includes('SameSite=Strict'));
+const cookieHeader={Cookie:cookie};
+assert.equal((await (await request('/api/session',{headers:cookieHeader})).json()).authenticated,true);
+assert.equal((await request('/api/faxes',{headers:cookieHeader})).status,200);
+
 const faxId=randomUUID(),eventId=randomUUID();
 const obj={data:{id:eventId,event_type:'fax.receiving.started',
   occurred_at:new Date().toISOString(),
@@ -39,8 +58,15 @@ assert.equal(res.status,200);
 assert.equal((await res.json()).duplicate,true,'Duplicate webhook must be idempotent');
 const list=await (await request('/api/faxes',{headers:auth})).json();
 assert.ok(list.items.some(f=>f.telnyxId===faxId&&f.direction==='inbound'));
+const fromCookie=await (await request('/api/faxes',{headers:cookieHeader})).json();
+assert.ok(fromCookie.items.some(f=>f.telnyxId===faxId),'Cookie session accesses real fax data');
+const logout=await request('/api/session',{method:'DELETE',headers:cookieHeader});
+assert.equal(logout.status,200);
+assert.equal((await (await request('/api/session',{headers:cookieHeader})).json()).authenticated,false,
+  'Revoked session must not be reusable');
+assert.equal((await request('/api/faxes',{headers:cookieHeader})).status,401);
 const bad=await request('/webhooks/telnyx',{method:'POST',headers:{'Content-Type':'application/json'},body:raw});
 assert.equal(bad.status,401);
 const send=await request('/api/faxes',{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:'{}'});
 assert.equal(send.status,503,'Outbound must remain locked');
-console.log('PASS: health, auth, signed webhook, idempotency, database persistence, outbound lock');
+console.log('PASS: health, 7-day secure login cookie, session authentication/logout, signed webhook, idempotency, database persistence, outbound lock');
