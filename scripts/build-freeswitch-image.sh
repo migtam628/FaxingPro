@@ -1,50 +1,72 @@
 #!/usr/bin/env bash
-# Builds a staged FreeSWITCH/SpanDSP image WITHOUT starting or exposing it.
+# Stage an official FreeSWITCH image; never start SIP, route a DID or change firewall.
 set -euo pipefail
-
 if [[ ! -t 0 ]]; then
-  echo "Run interactively over SSH; PAT input must not be passed as a CLI argument." >&2
+  echo "Run interactively over SSH; do not put a token in a command." >&2
   exit 1
 fi
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required. No changes made." >&2
-  exit 1
-fi
+for cmd in docker curl mktemp; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "Missing $cmd" >&2; exit 1; }
+done
 if [[ -n "${SIGNALWIRE_PAT:-}" || -n "${TOKEN:-}" ]]; then
-  echo "Avoid exporting secrets in environment variables; use the interactive prompt." >&2
+  echo "Do not export tokens in your shell. Use the hidden prompt." >&2
   exit 1
 fi
+
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-dockerfile="${project_root}/deployment/freeswitch/Dockerfile"
-if [[ ! -f "$dockerfile" ]]; then
-  echo "Cannot find the FaxingPro FreeSWITCH Dockerfile." >&2
-  exit 1
-fi
+dockerfile="$project_root/deployment/freeswitch/Dockerfile"
+test -f "$dockerfile" || { echo "Dockerfile missing." >&2; exit 1; }
 
 umask 077
 secret_file="$(mktemp)"
-cleanup() { rm -f "$secret_file"; }
-trap cleanup EXIT INT TERM
+netrc_file="$(mktemp)"
+cleanup() { rm -f -- "$secret_file" "$netrc_file"; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-echo "SignalWire PAT is required for the official FreeSWITCH Debian package repository."
-echo "The prompt hides the token; it is temporarily stored in a 0600 file and removed after the build."
-echo "This builds an image only. It will NOT launch a SIP server or modify your firewall."
-IFS= read -r -s -p "SignalWire Personal Access Token: " sw_pat
+echo "Use your SignalWire Personal Access Token, NOT a Telnyx API key."
+echo "The builder verifies repository authorization before running Docker."
+IFS= read -r -s -p "SignalWire PAT (hidden): " sw_pat
 printf '\n'
-if [[ -z "$sw_pat" ]]; then
-  echo "No token entered; exiting without building." >&2
+if [[ -z "$sw_pat" || "$sw_pat" == *[[:space:]]* ]]; then
+  echo "Empty token or whitespace detected; nothing was changed." >&2
   exit 1
 fi
 printf '%s' "$sw_pat" > "$secret_file"
+printf 'machine freeswitch.signalwire.com login signalwire password %s\n' "$sw_pat" > "$netrc_file"
 unset sw_pat
+
+key_url="https://freeswitch.signalwire.com/repo/deb/debian-release/signalwire-freeswitch-repo.gpg"
+echo "Checking official FreeSWITCH package access..."
+if ! status="$(curl --silent --show-error --location --netrc-file "$netrc_file" \
+  --output /dev/null --write-out '%{http_code}' --connect-timeout 10 --max-time 30 "$key_url")"; then
+  echo "Network/TLS error while checking package access. No Docker build started." >&2
+  exit 1
+fi
+case "$status" in
+  200) echo "HTTP 200: package key accessible. Building image..." ;;
+  401)
+    echo "HTTP 401: SignalWire did not authorize this PAT." >&2
+    echo "Create a SignalWire Space Personal Access Token, not a Telnyx token." >&2
+    echo "If a new PAT also fails, ask SignalWire support to check FreeSWITCH community repository access." >&2
+    echo "No Docker build started." >&2
+    exit 1 ;;
+  403)
+    echo "HTTP 403: check package repository entitlement with SignalWire." >&2
+    echo "No Docker build started." >&2
+    exit 1 ;;
+  *)
+    echo "HTTP $status (expected 200). No Docker build started." >&2
+    exit 1 ;;
+esac
+rm -f -- "$netrc_file"
 
 DOCKER_BUILDKIT=1 docker build \
   --secret "id=signalwire_pat,src=${secret_file}" \
   --tag faxingpro-freeswitch:bookworm \
   --file "$dockerfile" \
-  "${project_root}/deployment/freeswitch"
+  "$project_root/deployment/freeswitch"
 
-echo ""
-echo "Image built. FreeSWITCH is NOT running."
-echo "Check installed package:"
-echo "  docker run --rm --network none faxingpro-freeswitch:bookworm dpkg-query -W freeswitch-mod-spandsp"
+echo "Image built; no SIP service started."
+echo "Verify: docker run --rm --network none faxingpro-freeswitch:bookworm dpkg-query -W freeswitch-mod-spandsp"
