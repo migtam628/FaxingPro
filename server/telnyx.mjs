@@ -1,5 +1,5 @@
 import http from 'node:http';
-import {randomUUID,timingSafeEqual} from 'node:crypto';
+import {randomUUID,timingSafeEqual,randomBytes,createHash} from 'node:crypto';
 import {mkdir,readFile,writeFile,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
@@ -18,10 +18,60 @@ if(sending&&(!e.TELNYX_API_KEY||!faxApp||!e164US(did)||!e164US(destination)||
   !base.startsWith('https://')))throw Error('Enable sending only with Telnyx credentials, US DID, test destination and HTTPS origin');
 const key=webhookKey(e.TELNYX_PUBLIC_KEY);
 const db=new pg.Pool({connectionString:e.DATABASE_URL,max:5,connectionTimeoutMillis:5000});
-const output=(r,s,data)=>{r.writeHead(s,{'Content-Type':'application/json','Cache-Control':'no-store',
-  'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY'});r.end(JSON.stringify(data));};
-const authed=req=>{const a=Buffer.from((req.headers.authorization||'').replace(/^Bearer\s+/i,'')),b=Buffer.from(secret);
-  return a.length===b.length&&timingSafeEqual(a,b);};
+const output=(r,s,data,headers={})=>{r.writeHead(s,{'Content-Type':'application/json','Cache-Control':'no-store',
+  'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY',...headers});r.end(JSON.stringify(data));};
+const tokenMatches=value=>{
+  if(typeof value!=='string')return false;
+  const supplied=Buffer.from(value),expected=Buffer.from(secret);
+  return supplied.length===expected.length&&timingSafeEqual(supplied,expected);
+};
+const tokenFingerprint=createHash('sha256').update(secret).digest('hex');
+const cookieName='__Host-faxingpro_session';
+const cookieBase='Path=/; HttpOnly; Secure; SameSite=Strict';
+const cookieClear=cookieName+'=; '+cookieBase+'; Max-Age=0';
+const sessionHash=raw=>createHash('sha256').update(raw).digest('hex');
+const sessionCookie=req=>{
+  const line=req.headers.cookie||'';
+  const match=line.split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName+'='));
+  const raw=match?.slice(cookieName.length+1)||'';
+  return /^[A-Za-z0-9_-]{43}$/.test(raw)?raw:null;
+};
+const currentSession=async req=>{
+  const raw=sessionCookie(req);
+  if(!raw)return null;
+  const {rows}=await db.query('SELECT expires_at FROM operator_sessions WHERE token_hash=$1 AND token_fingerprint=$2 AND expires_at>now()',
+    [sessionHash(raw),tokenFingerprint]);
+  return rows[0]||null;
+};
+const authed=async req=>{
+  if(tokenMatches((req.headers.authorization||'').replace(/^Bearer\s+/i,'')))return true;
+  return !!(await currentSession(req));
+};
+const operatorSession=async(req,res)=>{
+  if(req.method==='GET'){
+    const active=await currentSession(req);
+    return output(res,200,{authenticated:!!active,expiresAt:active?.expires_at||null});
+  }
+  if(req.method==='DELETE'){
+    const raw=sessionCookie(req);
+    if(raw)await db.query('DELETE FROM operator_sessions WHERE token_hash=$1',[sessionHash(raw)]);
+    return output(res,200,{authenticated:false},{'Set-Cookie':cookieClear});
+  }
+  if(req.method!=='POST')return output(res,405,{error:'Method not allowed'},{Allow:'GET, POST, DELETE'});
+  if(!(req.headers['content-type']||'').startsWith('application/json'))
+    return output(res,415,{error:'Content-Type must be application/json'});
+  let payload;
+  try{payload=JSON.parse((await body(req,4096)).toString('utf8'));}
+  catch{return output(res,400,{error:'Invalid request'});}
+  if(!tokenMatches(payload?.token))
+    return output(res,401,{error:'Invalid operator token'});
+  const raw=randomBytes(32).toString('base64url');
+  const expires=new Date(Date.now()+7*24*60*60*1000);
+  await db.query('INSERT INTO operator_sessions(token_hash,token_fingerprint,expires_at) VALUES($1,$2,$3)',
+    [sessionHash(raw),tokenFingerprint,expires]);
+  const cookie=cookieName+'='+raw+'; '+cookieBase+'; Max-Age=604800';
+  return output(res,200,{authenticated:true,expiresAt:expires.toISOString()},{'Set-Cookie':cookie});
+};
 const body=async(req,limit)=>{let len=0;const chunks=[];for await(const c of req){len+=c.length;
   if(len>limit)throw Error('Body exceeds size limit');chunks.push(c);}return Buffer.concat(chunks);};
 const row=r=>({id:r.id,telnyxId:r.telnyx_id,direction:r.direction,status:r.status,
@@ -39,6 +89,9 @@ const setup=async()=>{
   await db.query("CREATE TABLE IF NOT EXISTS webhook_events ("+
     "id TEXT PRIMARY KEY,fax_id TEXT,event_type TEXT,occurred_at TIMESTAMPTZ,received_at TIMESTAMPTZ DEFAULT now())");
   await db.query("CREATE INDEX IF NOT EXISTS faxes_created_at_idx ON faxes(created_at DESC)");
+  await db.query("CREATE TABLE IF NOT EXISTS operator_sessions ("+
+    "token_hash TEXT PRIMARY KEY,token_fingerprint TEXT NOT NULL,"+
+    "expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ DEFAULT now())");
 };
 const telnyx=async(record,link)=>{
   const ctl=new AbortController(),timeout=setTimeout(()=>ctl.abort(),15000);
@@ -162,6 +215,7 @@ const app=http.createServer(async(req,res)=>{
       return output(res,200,{ok:true,service:'FaxingPro Telnyx API',transport:'telnyx-fax-api',faxEnabled:sending});
     }
     if(req.method==='POST'&&p==='/webhooks/telnyx')return await webhook(req,res);
+    if(p==='/api/session')return await operatorSession(req,res);
     const media=p.match(/^\/media\/outbound\/([0-9a-f-]{36})$/i);
     if(req.method==='GET'&&media){
       if(!mediaAuthorized(mediaSecret,media[1],url.searchParams.get('exp'),url.searchParams.get('sig')))
@@ -173,7 +227,7 @@ const app=http.createServer(async(req,res)=>{
         'X-Content-Type-Options':'nosniff'});return res.end(pdf);
     }
     if(p.startsWith('/api/')){
-      if(!authed(req))return output(res,401,{error:'Unauthorized'});
+      if(!(await authed(req)))return output(res,401,{error:'Unauthorized'});
       if(req.method==='GET'&&p==='/api/capabilities')
         return output(res,200,{transport:'telnyx-fax-api',inbound:true,outbound:sending});
       if(req.method==='GET'&&p==='/api/faxes'){
@@ -206,3 +260,5 @@ app.requestTimeout=30000;app.headersTimeout=10000;
 await setup();
 app.listen(Number(e.PORT||8088),'0.0.0.0',()=>console.log('FaxingPro Telnyx API started (sending: '+sending+')'));
 setInterval(capture,5000).unref();
+setInterval(()=>db.query('DELETE FROM operator_sessions WHERE expires_at<now()').catch(err=>
+  console.error('Session cleanup failed:',err.message)),3600000).unref();
