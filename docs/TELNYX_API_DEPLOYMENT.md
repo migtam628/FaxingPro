@@ -94,7 +94,9 @@ Expected HTTP 401. Then use a real signed Telnyx test event and confirm its stat
 
 ## 6. Access private ATLAS and verify inbox
 
-Via your private HTTPS hostname, open ATLAS → Settings → API Connection. Use the same origin and your VPS API_TOKEN. Verify the dashboard changes from DEMO DATA to LIVE RECORDS and shows database counts.
+Via your private HTTPS hostname, open ATLAS → Settings → API Connection. Use the same origin and your VPS API_TOKEN, then select **Sign in & connect**. The server issues a 7-day `Secure; HttpOnly; SameSite=Strict` cookie backed by PostgreSQL; your raw API_TOKEN is cleared from the form and never saved to browser localStorage. Refresh the page or reopen the browser at the same hostname: the client calls `GET /api/session` to restore its live session automatically. The **Sign out** button revokes the session server-side. Use HTTPS; never sign in through the public GitHub Pages demo. If the API_TOKEN is rotated in your private `.env`, old sessions become invalid on API restart.
+
+The login cookie uses the `__Host-` prefix and is explicitly marked Secure. Use the configured HTTPS hostname for the persistence feature; HTTP SSH tunnel browsers may reject Secure cookies. The legacy Bearer API_TOKEN header remains supported for controlled scripting and backwards-compatible clients. This is single-operator authentication, not multi-user login or MFA.
 
 If the custom hostname is not ready, use a LOCAL SSH tunnel to view the site (Telnyx still needs public HTTPS for media/webhooks):
 
