@@ -1,0 +1,38 @@
+name: Validate Telnyx Fax Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/telnyx*'
+      - 'deployment/telnyx/**'
+      - 'deployment/nginx.conf'
+      - 'tests/telnyx.test.mjs'
+      - '.github/workflows/telnyx-ci.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  telnyx-backend:
+    name: API syntax, tests and Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Node module syntax
+        run: |
+          node --check server/telnyx.mjs
+          node --check server/telnyx-utils.mjs
+      - name: Run API and webhook security tests
+        run: npm test
+      - name: Validate isolated Docker Compose configuration
+        run: |
+          docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env.example config --quiet
+      - name: Build FaxingPro Telnyx API container
+        run: docker build -f server/telnyx.Dockerfile -t faxingpro-telnyx-api:ci .
