@@ -334,9 +334,13 @@ export default function App(){
           {page==='backups'&&<Panel title="Backup & Recovery Center">
             <div className="settings-card"><Archive size={22}/><div><strong>Encrypted recovery archives</strong>
               <p>Backups combine the PostgreSQL database, encrypted PDF documents and the protected recovery configuration using an off-VPS age public key.</p></div>
-              <span className={'status '+(backupStatus?.configured?'status-received':'status-queued')}>
-                {backupStatus?.configured?'Recorded':'Not recorded'}</span></div>
+              <span className={'status '+(backupStatus?.freshness==='recent'?'status-received':'status-queued')}>
+                {backupStatus?.freshness==='recent'?'Recent local copy':backupStatus?.freshness==='stale'?'Older than 36 h':'No backup recorded'}</span></div>
             {backupError&&<div className="transport-warning"><AlertTriangle size={18}/>{backupError}</div>}
+            {backupStatus&&<div className="notice inner"><Activity size={18}/><div>
+              <strong>Local backup freshness: {backupStatus.freshness==='recent'?'Recent':backupStatus.freshness==='stale'?'Overdue':'No record'}</strong>
+              <span>{backupStatus.message} The server does not currently know whether a systemd timer is enabled or an offsite copy exists.</span>
+            </div></div>}
             <div className="backup-history">
               <h3>Latest local backup records</h3>
               {backupStatus?.runs.length?backupStatus.runs.map(run=><div className="backup-record" key={run.name}>
