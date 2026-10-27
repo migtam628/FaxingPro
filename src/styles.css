@@ -76,3 +76,16 @@
 @media(max-width:490px){.setup-private{display:none}.setup-topbar{height:70px}.setup-body{width:calc(100% - 24px)}.setup-highlights{grid-template-columns:1fr}.setup-progress-step{gap:5px}.setup-progress-step small{font-size:9px}.setup-panel{padding:19px}.setup-stage h2{font-size:21px}}
 
 .viewer-download{margin:44px auto 0;display:grid;gap:15px;justify-items:center;text-align:center;color:#0d9488}.viewer-download strong{font-size:14px;color:#274257}.viewer-download .btn{margin-top:5px}
+
+/* v0.4 — Original authenticated fax PDFs, and backup recovery history. */
+.real-pdf-canvas{padding:0!important;background:#e4ecf2;min-height:720px;overflow:hidden}
+.stored-pdf{display:block;width:100%;height:76vh;min-height:700px;border:0;background:#fff}
+.pdf-placeholder{margin:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;min-height:350px;color:#63798d;text-align:center;padding:30px}
+.pdf-placeholder strong{font-size:14px;color:#334b61}.pdf-placeholder svg{color:#0d9488}
+.backup-history{padding:20px 22px}.backup-history h3{font-size:13px;margin-bottom:15px}
+.backup-record{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 4px;border-bottom:1px solid #e9eff4;font-size:12px}
+.backup-record svg{color:#0d9488}.backup-record strong{flex:1}
+.backup-record span{color:#7991a5}
+.backup-actions{display:flex;flex-wrap:wrap;gap:10px;padding:16px 22px}
+.backup-actions a{text-decoration:none}.backup-actions .btn{display:inline-flex;gap:7px;align-items:center}
+@media(max-width:740px){.stored-pdf{min-height:500px;height:66vh}.real-pdf-canvas{min-height:510px}}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
   BookUser, CheckCircle2, ChevronLeft, ChevronRight,
   CircleHelp, Clock3, Cloud, Download, FilePlus2, FileText, Filter, FolderOpen,
@@ -7,7 +7,7 @@ import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, 
   Trash2, UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
   type LucideIcon } from 'lucide-react';
 import SetupWizard from './SetupWizard';
-import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, downloadFax, submitFax, type Health, type FaxStats, type ServerFax, type SetupState } from './api';
+import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, downloadFax, submitFax, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus } from './api';
 import type { Fax, FaxStatus, Page } from './types';
 
 const sections: {group:string;items:{page:Page;label:string;icon:LucideIcon}[]}[] = [
@@ -20,7 +20,8 @@ const sections: {group:string;items:{page:Page;label:string;icon:LucideIcon}[]}[
     {page:'reports',label:'Activity & Reports',icon:Activity}]},
   {group:'SYSTEM',items:[
     {page:'server',label:'Fax Server',icon:Server},{page:'sip',label:'Fax Transport',icon:Wifi},
-    {page:'queue',label:'Job Queue',icon:Clock3},{page:'security',label:'Security',icon:ShieldCheck},
+    {page:'queue',label:'Job Queue',icon:Clock3},{page:'backups',label:'Backup & Recovery',icon:Archive},
+    {page:'security',label:'Security',icon:ShieldCheck},
     {page:'settings',label:'Settings',icon:Settings2}]}
 ];
 const titleFor = (p: Page) => p==='viewer' ? 'Document Viewer' : sections.flatMap(s=>s.items).find(s=>s.page===p)?.label || 'FaxHub';
@@ -35,7 +36,7 @@ function serverToFax(s:ServerFax):Fax{
     s.status==='failed'?'failed':'queued';
   return {id:s.id,title:s.title||s.filename||'Fax',contact:s.direction==='inbound'?s.from:s.to,
     number:s.direction==='inbound'?s.from:s.to,pages:s.pages||0,status,direction:s.direction,
-    createdAt:new Date(s.createdAt).toLocaleString(),source:'live'};
+    createdAt:new Date(s.createdAt).toLocaleString(),source:'live',hasDocument:s.hasDocument};
 }
 function readBase64(file:File):Promise<string> {return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');reader.onerror=()=>reject(new Error('Unable to read file'));reader.readAsDataURL(file);});}
 
@@ -43,6 +44,12 @@ export default function App(){
   const [page,setPage]=useState<Page>('dashboard');
   const [mobileNav,setMobileNav]=useState(false);
   const [activeFax,setActiveFax]=useState<Fax|null>(null);
+  const viewerFrame=useRef<HTMLIFrameElement|null>(null);
+  const [viewerUrl,setViewerUrl]=useState<string|null>(null);
+  const [viewerLoading,setViewerLoading]=useState(false);
+  const [viewerError,setViewerError]=useState('');
+  const [backupStatus,setBackupStatus]=useState<BackupStatus|null>(null);
+  const [backupError,setBackupError]=useState('');
   const [boot,setBoot]=useState<'checking'|'signin'|'setup'|'ready'>('checking');
   const [setupInfo,setSetupInfo]=useState<SetupState|null>(null);
   const [setupError,setSetupError]=useState('');
@@ -108,6 +115,37 @@ export default function App(){
   },[bootRetry]);
   useEffect(()=>{if(!toast)return;const timer=window.setTimeout(()=>setToast(''),4500);return ()=>clearTimeout(timer);},[toast]);
   useEffect(()=>{if(!file){setFileUrl(null);return;}const url=URL.createObjectURL(file);setFileUrl(url);return ()=>URL.revokeObjectURL(url);},[file]);
+  useEffect(()=>{
+    if(page!=='viewer'||!activeFax?.hasDocument||!apiEndpoint)return;
+    let cancelled=false,objectUrl='';
+    setViewerLoading(true);setViewerError('');setViewerUrl(null);
+    downloadFax(apiEndpoint,'',activeFax.id)
+      .then(blob=>{
+        if(!blob.size||!(blob.type.includes('pdf')||blob.type==='application/octet-stream'))
+          throw Error('Server did not return a PDF document');
+        objectUrl=URL.createObjectURL(blob);
+        if(cancelled)URL.revokeObjectURL(objectUrl);else setViewerUrl(objectUrl);
+      })
+      .catch(error=>{if(!cancelled)setViewerError(error instanceof Error?error.message:'Unable to preview PDF');})
+      .finally(()=>{if(!cancelled)setViewerLoading(false);});
+    return ()=>{cancelled=true;if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[page,activeFax?.id,activeFax?.hasDocument,apiEndpoint]);
+  useEffect(()=>{
+    if(page!=='backups'||boot!=='ready')return;
+    let cancelled=false;
+    getBackupStatus(apiEndpoint).then(v=>{if(!cancelled){setBackupStatus(v);setBackupError('');}})
+      .catch(e=>{if(!cancelled)setBackupError(e instanceof Error?e.message:'Unable to load backup history');});
+    return ()=>{cancelled=true;};
+  },[page,boot,apiEndpoint]);
+  async function refreshBackups(){
+    try{setBackupStatus(await getBackupStatus(apiEndpoint));setBackupError('');}
+    catch(e){setBackupError(e instanceof Error?e.message:'Unable to refresh backups');}
+  }
+  function printCurrent(){
+    if(!viewerUrl)return;
+    try{viewerFrame.current?.contentWindow?.focus();viewerFrame.current?.contentWindow?.print();}
+    catch{window.open(viewerUrl,'_blank','noopener,noreferrer');}
+  }
   async function refreshLive(endpoint=apiEndpoint,token=apiToken){
     if(!endpoint.trim())return;
     setRefreshing(true);
@@ -250,13 +288,20 @@ export default function App(){
       </>}
       {page==='viewer'&&activeFax&&<>
         <div className="page-heading compact"><div><button className="back-link" onClick={()=>navigate('documents')}><ArrowLeft size={16}/> Back to documents</button><h1>{activeFax.title}</h1><p>{activeFax.pages} pages · {activeFax.id} · {activeFax.createdAt}</p></div><div className="heading-actions"><Status value={activeFax.status}/><button className="btn secondary" onClick={downloadCurrent}><Download size={16}/> Download</button><button className="btn primary" onClick={()=>{setRecipient(activeFax.number);navigate('compose');}}><ArrowUpRight size={16}/> Forward</button></div></div>
-        <div className="viewer-grid"><div className="viewer-area"><div className="viewer-tools"><span><FileText size={16}/> Document preview</span><div><button aria-label="Previous page" disabled><ChevronLeft size={17}/></button><span>1 / {activeFax.pages}</span><button aria-label="Next page" disabled><ChevronRight size={17}/></button><button aria-label="Download PDF" onClick={downloadCurrent}><Download size={17}/></button></div></div><div className="viewer-canvas"><div className="paper-page">
-  <div className="document-top"><span>FAXINGPRO</span><small>SECURE DOCUMENT</small></div>
-  <div className="document-heading">{activeFax.title}</div>
-  <p>The original PDF is stored encrypted on your VPS. Download it with your authenticated operator session to view or print the actual pages.</p>
-  <div className="viewer-download"><FileText size={44}/><strong>{activeFax.pages} page{activeFax.pages===1?'':'s'}</strong>
-    <button className="btn primary" onClick={downloadCurrent}><Download size={17}/> Download original PDF</button></div>
-</div></div></div>
+        <div className="viewer-grid"><div className="viewer-area">
+          <div className="viewer-tools"><span><FileText size={16}/> Secure PDF viewer</span>
+            <div><span>{activeFax.pages||'—'} reported page{activeFax.pages===1?'':'s'}</span>
+              <button disabled={!viewerUrl} aria-label="Print fax" onClick={printCurrent}><Printer size={17}/></button>
+              <button aria-label="Download PDF" onClick={downloadCurrent}><Download size={17}/></button></div></div>
+          <div className="viewer-canvas real-pdf-canvas">
+            {viewerLoading&&<div className="pdf-placeholder"><RefreshCw size={25}/><strong>Loading encrypted fax document…</strong></div>}
+            {!viewerLoading&&viewerUrl&&<iframe ref={viewerFrame} className="stored-pdf" title={'PDF document: '+activeFax.title} src={viewerUrl}/>}
+            {!viewerLoading&&!viewerUrl&&<div className="pdf-placeholder"><FileText size={35}/>
+              <strong>{viewerError||(!activeFax.hasDocument?'Document not stored yet':'PDF preview unavailable')}</strong>
+              <span>Use Download PDF to retrieve the original file if it is available.</span>
+              {activeFax.hasDocument&&<button className="btn secondary" onClick={downloadCurrent}><Download size={16}/> Download PDF</button>}
+            </div>}
+          </div></div>
           <aside className="viewer-side"><div className="detail-tabs">{['Details','Activity'].map(t=><button key={t} className={viewTab===t?'current':''} onClick={()=>setViewTab(t)}>{t}</button>)}</div>{viewTab==='Details'?<div className="detail-body"><div className="detail-status"><Status value={activeFax.status}/><span>{activeFax.direction==='inbound'?'Incoming fax':'Outgoing fax'}</span></div>{[['Document',activeFax.title],['From / To',activeFax.contact],['Fax number',activeFax.number],['Pages',String(activeFax.pages)],['Received / Created',activeFax.createdAt],['Transmission ID',activeFax.id],['Source','VPS / Telnyx']].map(([k,v])=><div className="detail-row" key={k}><span>{k}</span><strong>{v}</strong></div>)}</div>:<div className="detail-body"><div className="timeline"><span/><div><strong>Received by FaxingPro</strong><small>{activeFax.createdAt}</small></div></div><p className="field-help">Live transmission event history will require server connectivity.</p></div>}<div className="viewer-side-actions"><button onClick={downloadCurrent}><Download size={16}/> Download PDF</button><button onClick={()=>{setRecipient(activeFax.number);navigate('compose');}}><ArrowUpRight size={16}/> Forward as fax</button><button onClick={()=>setToast('Fax deletion requires a retention policy and is not available yet.')}><Trash2 size={16}/> Delete</button></div></aside></div>
       </>}
       {page==='contacts'&&<>
@@ -275,9 +320,9 @@ export default function App(){
         <div className="kpi-grid">{[['Successful deliveries',String(stats?.sent??0)],['Received faxes',String(stats?.received??0)],['Pending transmissions',String(stats?.pending??0)],['Failed transmissions',String(stats?.failed??0)]].map(([label,value])=><div className="kpi-card" key={label}><span className="eyebrow">{label}</span><div className="kpi-value">{value}</div></div>)}</div>
         <Panel title="Recent transmissions">{table(faxes.slice(0,10),false)}</Panel></>}
       {page==='team'&&<><div className="page-heading"><div><span className="eyebrow">ACCESS MANAGEMENT</span><h1>Team Members</h1><p>Manage team roles and workspace permissions.</p></div><button className="btn primary" onClick={()=>setToast('Team invitations are not yet available. This installation uses a single operator.')}><Users size={16}/> Invite member</button></div><Panel title="Workspace access"><div className="settings-card"><Users size={22}/><div><strong>Local operator</strong><p>Administrator · Secure session</p></div><span className="status status-received">Active</span></div></Panel></>}
-      {(page==='settings'||page==='server'||page==='sip'||page==='security')&&<>
+      {(page==='settings'||page==='server'||page==='sip'||page==='security'||page==='backups')&&<>
         <div className="page-heading"><div><span className="eyebrow">SYSTEM ADMINISTRATION</span><h1>{titleFor(page)}</h1><p>Configure your self-hosted FaxingPro installation.</p></div></div>
-        <div className="settings-layout"><div className="settings-menu">{[['General','settings'],['API Connection','settings'],['Server Health','server'],['SIP & T.38','sip'],['Security','security']].map(([name,target])=><button className={(page===target&&(page!=='settings'||settingsTab===name))?'selected':''} key={name} onClick={()=>{setPage(target as Page);setSettingsTab(name);}}>{name}<ChevronRight size={15}/></button>)}</div><div className="settings-content">
+        <div className="settings-layout"><div className="settings-menu">{[['General','settings'],['API Connection','settings'],['Server Health','server'],['SIP & T.38','sip'],['Security','security'],['Backup & Recovery','backups']].map(([name,target])=><button className={(page===target&&(page!=='settings'||settingsTab===name))?'selected':''} key={name} onClick={()=>{setPage(target as Page);setSettingsTab(name);}}>{name}<ChevronRight size={15}/></button>)}</div><div className="settings-content">
           {page==='settings'&&settingsTab==='General'&&<Panel title="Workspace preferences">
             <div className="settings-card"><Settings2 size={22}/><div><strong>{setupInfo?.workspaceName||'FaxingPro'}</strong><p>Workspace name · Setup completed in your private database.</p></div><span className="status status-received">Active</span></div>
             <div className="settings-card"><Cloud size={22}/><div><strong>Timezone</strong><p>{setupInfo?.timezone||'America/New_York'}</p></div></div>
@@ -286,10 +331,30 @@ export default function App(){
           {page==='settings'&&settingsTab==='API Connection'&&<Panel title="Connect your self-hosted server"><div className="settings-fields"><label>API base URL<input placeholder="https://fax.example.com" value={apiEndpoint} onChange={e=>{setApiEndpoint(e.target.value);setHealth(null);setLiveFaxes(null);setStats(null);}}/></label><label>Operator API token (sign in once)<input type="password" autoComplete="off" placeholder={liveFaxes!==null?'Signed in — token not stored in browser':'Enter API_TOKEN from your VPS'} value={apiToken} onChange={e=>setApiToken(e.target.value)}/></label><p>Your API_TOKEN is exchanged once for a secure HttpOnly session cookie valid for 7 days. The token is never saved in browser storage and is cleared from this form after sign-in. Use only your trusted FaxingPro HTTPS website, never the public GitHub Pages demo.</p><button className="btn primary" disabled={testing} onClick={testConnection}><RefreshCw size={17}/>{testing?'Connecting...':liveFaxes!==null?'Refresh connection':'Sign in & connect'}</button>{liveFaxes!==null&&<button className="btn secondary" onClick={signOut}><LockKeyhole size={17}/> Sign out</button>}{health&&<div className="connection-result"><CheckCircle2 size={17}/> Connected: {health.service} · transport: {health.transport} · fax: {health.faxEnabled?'enabled':'disabled'}</div>}</div></Panel>}
           {page==='server'&&<Panel title="Server health"><div className="settings-card"><Server size={22}/><div><strong>FaxingPro API</strong><p>{health?health.service+' is responding':'Not connected. Configure your API connection in Settings.'}</p></div><span className={'status '+(health?'status-received':'status-queued')}>{health?'Online':'Unknown'}</span></div><div className="settings-card"><Cloud size={22}/><div><strong>Transmission provider</strong><p>{health?health.transport:'Not connected'}</p></div></div><button className="btn secondary" onClick={()=>{setPage('settings');setSettingsTab('API Connection');}}>Configure connection <ArrowRight size={16}/></button></Panel>}
           {page==='sip'&&<Panel title="Managed fax transport"><div className="settings-card"><Phone size={22}/><div><strong>{health?.transport==='telnyx-fax-api'?'Telnyx Programmable Fax':'SIP trunk (alternative)'}</strong><p>{health?.transport==='telnyx-fax-api'?'Managed by Telnyx. Verify your Fax Application ID, purchased DID, public webhook, and account permissions on the VPS.':'No self-hosted SIP gateway configured.'}</p></div><span className="status status-received">Connected</span></div><div className="settings-card"><Wifi size={22}/><div><strong>Fax transport</strong><p>{health?.transport==='telnyx-fax-api'?'T.38 and G.711 processing are managed by Telnyx Fax API.':'Self-hosted SIP/T.38 is an optional alternative requiring a separate gateway.'}</p></div></div><div className="notice inner"><AlertTriangle size={18}/><div><strong>{health?.faxEnabled?'Outbound test enabled':'Outbound is locked'}</strong><span>Only Telnyx fax.delivered confirms delivery; API acceptance is not a delivery receipt.</span></div></div></Panel>}
+          {page==='backups'&&<Panel title="Backup & Recovery Center">
+            <div className="settings-card"><Archive size={22}/><div><strong>Encrypted recovery archives</strong>
+              <p>Backups combine the PostgreSQL database, encrypted PDF documents and the protected recovery configuration using an off-VPS age public key.</p></div>
+              <span className={'status '+(backupStatus?.configured?'status-received':'status-queued')}>
+                {backupStatus?.configured?'Recorded':'Not recorded'}</span></div>
+            {backupError&&<div className="transport-warning"><AlertTriangle size={18}/>{backupError}</div>}
+            <div className="backup-history">
+              <h3>Latest local backup records</h3>
+              {backupStatus?.runs.length?backupStatus.runs.map(run=><div className="backup-record" key={run.name}>
+                <CheckCircle2 size={17}/><strong>{run.name}</strong>
+                <span>{new Date(run.completed_at).toLocaleString()}</span></div>):
+                <Empty label="No backup job has reported successful encrypted archive creation yet."/>}
+            </div>
+            <div className="notice inner"><ShieldCheck size={18}/><div><strong>Offsite verification is separate</strong>
+              <span>These records do not prove an offsite copy exists or that a restoration has succeeded. A private age identity must be held outside the VPS. Run backups from the VPS CLI, not from this web browser.</span></div></div>
+            <div className="backup-actions">
+              <button className="btn secondary" onClick={()=>void refreshBackups()}><RefreshCw size={16}/> Refresh status</button>
+              <a className="btn secondary" href="https://github.com/migtam628/FaxingPro/blob/main/docs/BACKUP_RECOVERY.md" target="_blank" rel="noopener noreferrer">Backup & recovery guide <ArrowUpRight size={15}/></a>
+            </div>
+          </Panel>}
           {page==='security'&&<Panel title="Security posture"><div className="settings-card"><ShieldCheck size={22}/><div><strong>API token</strong><p>Server calls require an operator-generated secret.</p></div></div><div className="settings-card"><LockKeyhole size={22}/><div><strong>HTTPS</strong><p>Use a trusted reverse proxy; never expose the API token over HTTP.</p></div></div><div className="settings-card"><Archive size={22}/><div><strong>Encrypted storage & roles</strong><p>The Telnyx pilot encrypts PDF volumes with AES-256-GCM. Multi-user roles, MFA, retention and key rotation remain production requirements.</p></div></div></Panel>}
         </div></div>
       </>}
-      <footer className="app-footer"><span>FaxingPro · ATLAS v0.3 · Live backend</span><span><span className="footer-dot"/> {health?.faxEnabled?'Telnyx outbound pilot enabled':'Outbound sending locked'}</span></footer>
+      <footer className="app-footer"><span>FaxingPro · ATLAS v0.4 · Live backend</span><span><span className="footer-dot"/> {health?.faxEnabled?'Telnyx outbound pilot enabled':'Outbound sending locked'}</span></footer>
       </main>
     </div>
     {toast&&<div className="toast"><span>{toast}</span><button aria-label="Dismiss notification" onClick={()=>setToast('')}><X size={17}/></button></div>}
