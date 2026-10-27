@@ -1,6 +1,6 @@
-# FaxingPro v0.2: Telnyx Programmable Fax API Pilot
+# FaxingPro v0.3: Telnyx API deployment and first-use wizard
 
-**Status:** Code is committed. The live backend is not deployed or linked to your Telnyx account. Outbound sending is OFF by default. Public GitHub Pages remains demo-only.
+**Status:** The existing installation at https://fax.mttechservicesllc.com has completed real inbound and outbound fax tests. This guide also covers new installations. The public GitHub Pages build is static and has no fake fax records or server backend.
 
 ## Architecture and isolation
 
@@ -11,6 +11,28 @@
 - Backend validates Ed25519-signed Telnyx webhooks and records unique webhook IDs.
 - Received PDF URLs are downloaded into an AES-256-GCM encrypted PDF volume; outbound PDFs use expiring HMAC-signed URLs. Protect and back up the separate storage encryption key.
 - Outbound sending requires an explicit SEND_ENABLED=true and can reach only TEST_DESTINATION.
+
+## Initial setup wizard (new in v0.3)
+
+- On first opening your self-hosted HTTPS site, ATLAS checks for a valid operator session.
+- If no session exists, **Step 1: Connect** asks for the existing VPS `API_TOKEN` once. The token is exchanged for a 7-day HttpOnly, Secure, SameSite=Strict cookie; browser localStorage is never used for API credentials.
+- **Step 2: Check gateway** verifies the five required Telnyx environment settings: V2 API key, Fax Application ID, DID, webhook signing key and public HTTPS origin. Only presence/format status and the phone number are shown; secret values are never returned to the frontend.
+- **Step 3: Workspace** records the workspace name and timezone in the existing PostgreSQL database. It does not change Telnyx credentials, billing, or dial restrictions.
+- Finishing setup is **persisted on the server**. Reloads open the real dashboard, not the wizard. Existing received/sent faxes and encrypted PDFs remain intact.
+- Contacts, fax number provisioning, unread tracking and multi-user accounts are not yet implemented. They show truthful empty/informational states instead of fictitious records.
+
+### Upgrade a running FaxingPro installation
+
+The following update leaves the dedicated PostgreSQL database, encrypted PDF volume and existing MooBee/Caddy services running:
+
+~~~bash
+cd ~/FaxingPro
+git pull --ff-only
+docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --no-deps --build api web
+curl -fsS https://fax.mttechservicesllc.com/healthz
+~~~
+
+**The wizard will appear once even on an existing installation** because completion tracking is newly introduced; it will not delete or reset fax history. Sign in with your current operator token, verify Telnyx settings, choose your workspace name and click Finish.
 
 ## 1. Prepare the VPS
 

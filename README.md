@@ -2,7 +2,7 @@
 
 **ATLAS — Self-hosted fax workspace**
 
-Premium fax management preview for Windows, macOS, Linux, and the web.
+Self-hosted fax management for Windows, macOS, Linux and the web, with live Telnyx Programmable Fax API integration.
 
 [![Build and Release](https://github.com/migtam628/FaxingPro/actions/workflows/release.yml/badge.svg)](https://github.com/migtam628/FaxingPro/actions/workflows/release.yml)
 [![Release](https://img.shields.io/github/v/release/migtam628/FaxingPro?include_prereleases&label=Release)](https://github.com/migtam628/FaxingPro/releases)
@@ -12,7 +12,13 @@ Premium fax management preview for Windows, macOS, Linux, and the web.
 
 
 > [!IMPORTANT]
-> **Version 0.1.0 — ATLAS UI preview + self-hosted API starter.** Real fax **sending, receiving, telephone-number provisioning and delivery receipts are not implemented**. The fax metrics and records shown in this version are demonstration data. Production document storage, accounts and SIP/T.38 transport are planned.
+> **v0.3 — Live Telnyx application with a secure first-run wizard.**
+> The self-hosted deployment supports real inbound/outbound faxes, signed Telnyx webhooks,
+> encrypted PDF storage, PostgreSQL history and 7-day operator login sessions.
+> On first launch, the wizard verifies the server, checks the configured Telnyx settings
+> and saves the workspace name/timezone in PostgreSQL. **No demo data is shipped in ATLAS.**
+> Sending still follows the VPS-level `SEND_ENABLED` and `TEST_DESTINATION` safety gates.
+> The static GitHub Pages site cannot be used as a real fax backend.
 
 ![Illustrated ATLAS dashboard](docs/images/atlas-dashboard.svg)
 
@@ -33,26 +39,29 @@ Premium fax management preview for Windows, macOS, Linux, and the web.
 
 ## Current features
 
-| Feature | Status | What it really does |
+| Feature | Status | What it does |
 | --- | --- | --- |
-| Dashboard + statistics | ✅ Preview | Illustrative KPI cards, chart and recent fax list |
-| Inbox / Sent Faxes / Documents | ✅ Preview | Demo records, search, navigation and filters |
-| Fax composer | ✅ Preview | Recipient entry and PDF attachment preview (one PDF, 10 MB maximum) |
-| Drafts | ✅ Local | Stores metadata in the current browser/profile; **not document file bytes** |
-| Document viewer | ✅ Preview | Example layout and fax metadata; demo records have no downloadable PDF |
-| Contacts / Fax Numbers / Reports | ✅ Preview | Example directories and admin layouts, not live provisioning or analytics |
-| Server status / API connection | ✅ Starter | Tests health of a self-hosted Node API |
-| Docker web + API deployment | ✅ Starter | Nginx UI container and separate private Node container |
-| Windows, macOS and Linux installers | ✅ Built | GitHub Actions packages 5 executable variants |
-| Actual fax calls and SIP/T.38 | ❌ Not yet | FreeSWITCH / SpanDSP and carrier connectivity remain to be built |
-| User login, persistent documents, encrypted storage | ❌ Not yet | Production backend is planned |
-| Delivery confirmations | ❌ Not yet | Preview statuses do not indicate real deliveries |
+| First-use setup wizard | ✅ Live | Secure operator sign-in, Telnyx readiness checks, workspace settings stored on VPS |
+| Dashboard and statistics | ✅ Live | Verified counts from PostgreSQL; no sample KPI data |
+| Inbox / Sent / Documents | ✅ Live | Real fax records, search, download of encrypted originals |
+| Fax composer | ✅ Live | Submit a PDF (up to 10 MB) via Telnyx, subject to configured destination restrictions |
+| Delivery receipts | ✅ Live | Signed Telnyx webhooks update real received/delivered/failed states |
+| Persistent operator session | ✅ Live | 7-day HttpOnly Secure cookie, server-side revocation |
+| Fax document encryption | ✅ Live | AES-256-GCM encrypted files in an isolated persistent Docker volume |
+| Contacts and read/unread | ⏳ Planned | Empty, clearly labeled states; no fake contacts |
+| Historical trend reports | ⏳ Planned | Actual aggregate counts exist, but trend charts are not yet implemented |
+| Multiple users, MFA, compliance controls | ⏳ Not production ready | Single-operator pilot; not suitable for regulated/PHI documents |
+
+For deploying the actual fax service, read the [**Telnyx VPS deployment guide**](docs/TELNYX_API_DEPLOYMENT.md).
+On an existing installation, **your real fax records are preserved**. The wizard appears
+once after this update and will not appear again after you finish it, unless the server
+configuration is reset. API tokens and Telnyx credentials remain in the VPS `.env` file.
 
 ## Public website — GitHub Pages
 
 The ATLAS web preview can be published at **https://migtam628.github.io/FaxingPro/** through the dedicated [**Deploy ATLAS Website to GitHub Pages**](https://github.com/migtam628/FaxingPro/actions/workflows/pages.yml) workflow.
 
-**One-time GitHub setup:**
+**GitHub Pages only (static landing/client preview with no sample records):**
 
 1. Open [**FaxingPro → Settings → Pages**](https://github.com/migtam628/FaxingPro/settings/pages).
 2. Under **Build and deployment → Source**, select **GitHub Actions**. Don't select **Deploy from a branch** for this React/Vite application.
@@ -63,7 +72,7 @@ The ATLAS web preview can be published at **https://migtam628.github.io/FaxingPr
 The workflow builds Vite to `dist/` and uses `VITE_BASE_PATH=/FaxingPro/`, which makes the generated JavaScript, CSS, and local font links work under the GitHub Pages project URL. It does **not** modify Electron builds (which still use a relative asset base).
 
 > [!IMPORTANT]
-> Pages hosts **only the static ATLAS preview**. It cannot host this project's Node API, Docker containers, or a real telephone fax gateway. All displayed fax transactions are sample data, and sending and receiving faxes are disabled.
+> Pages hosts **only the static ATLAS preview**. It cannot host this project's Node API, Docker containers, or a real telephone fax gateway. The static deployment displays no fake transactions. It directs operators to their self-hosted HTTPS installation for real faxing and never accepts VPS credentials.
 
 If the page is blank, inspect the browser console for missing JavaScript/CSS files and review the [Pages workflow logs](https://github.com/migtam628/FaxingPro/actions/workflows/pages.yml). If you get a 404, confirm the publishing source is **GitHub Actions** and that the deployment completed successfully.
 
