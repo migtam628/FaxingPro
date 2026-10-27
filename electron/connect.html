@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect FaxingPro ATLAS</title><style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f7fa;color:#183149;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+section{width:min(530px,92vw);background:#fff;border:1px solid #e0e8ee;border-radius:16px;padding:44px;box-shadow:0 20px 75px #162f4915}
+.logo{display:inline-flex;align-items:center;gap:12px;font-weight:800;font-size:20px}.mark{background:#172f49;color:#fff;padding:12px;border-radius:10px}small{color:#109788;letter-spacing:2px}
+h1{font-size:29px;letter-spacing:-1px;margin:34px 0 12px}p{color:#6c8397;line-height:1.7}
+label{display:grid;gap:9px;font-weight:700;margin:28px 0 18px}input{padding:14px;border:1px solid #cfdee9;border-radius:9px;font:inherit}
+button{background:#0d9488;color:white;border:0;border-radius:9px;padding:15px 19px;font-size:14px;font-weight:750;cursor:pointer;width:100%}
+#message{min-height:24px;color:#a94343}footer{text-align:center;margin-top:28px;font-size:11px;color:#899bac}</style></head>
+<body><section><div class="logo"><span class="mark">FP</span>FaxingPro <small>ATLAS</small></div>
+<h1>Connect your fax workspace</h1>
+<p>Desktop builds connect to your existing self-hosted FaxingPro HTTPS server. This installer does not contain a fax server or sample records.</p>
+<form id="connect"><label>Your FaxingPro server URL<input id="url" type="url" required placeholder="https://fax.yourdomain.com" autocomplete="url" autofocus></label>
+<button id="go">Connect securely</button></form><p role="alert" id="message"></p>
+<footer>Only connect to a FaxingPro server you control and trust.</footer></section>
+<script>
+const form=document.getElementById('connect'),output=document.getElementById('message'),button=document.getElementById('go');
+form.addEventListener('submit',async e=>{
+  e.preventDefault();output.textContent='Connecting to your secure server...';button.disabled=true;
+  try{await window.faxingproDesktop.connect(document.getElementById('url').value);}
+  catch(error){output.textContent=error?.message||'Unable to connect. Check the HTTPS URL.';button.disabled=false;}
+});
+window.faxingproDesktop.onError(msg=>output.textContent=msg);
+</script></body></html>
