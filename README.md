@@ -12,7 +12,7 @@ Self-hosted fax management for Windows, macOS, Linux and the web, with live Teln
 
 
 > [!IMPORTANT]
-> **v0.3 — Live Telnyx application with a secure first-run wizard.**
+> **v0.4 — Live Telnyx fax workspace with secure onboarding, encrypted backup tooling and an in-app PDF viewer.**
 > The self-hosted deployment supports real inbound/outbound faxes, signed Telnyx webhooks,
 > encrypted PDF storage, PostgreSQL history and 7-day operator login sessions.
 > On first launch, the wizard verifies the server, checks the configured Telnyx settings
@@ -48,11 +48,13 @@ Self-hosted fax management for Windows, macOS, Linux and the web, with live Teln
 | Delivery receipts | ✅ Live | Signed Telnyx webhooks update real received/delivered/failed states |
 | Persistent operator session | ✅ Live | 7-day HttpOnly Secure cookie, server-side revocation |
 | Fax document encryption | ✅ Live | AES-256-GCM encrypted files in an isolated persistent Docker volume |
+| In-app fax PDF viewer | ✅ Live | Authenticated blob-based multi-page PDF preview, native browser controls, download and print |
+| Backup & Recovery Center | ✅ Pilot | Read-only encrypted backup history in ATLAS; VPS backup and offline verification scripts; offsite replication is manual |
 | Contacts and read/unread | ⏳ Planned | Empty, clearly labeled states; no fake contacts |
 | Historical trend reports | ⏳ Planned | Actual aggregate counts exist, but trend charts are not yet implemented |
 | Multiple users, MFA, compliance controls | ⏳ Not production ready | Single-operator pilot; not suitable for regulated/PHI documents |
 
-For deploying the actual fax service, read the [**Telnyx VPS deployment guide**](docs/TELNYX_API_DEPLOYMENT.md).
+For deploying the fax service, read the [**Telnyx VPS deployment guide**](docs/TELNYX_API_DEPLOYMENT.md). To create secure recovery archives, follow the [**v0.4 Backup & Recovery runbook**](docs/BACKUP_RECOVERY.md) before handling sensitive documents.
 On an existing installation, **your real fax records are preserved**. The wizard appears
 once after this update and will not appear again after you finish it, unless the server
 configuration is reset. API tokens and Telnyx credentials remain in the VPS `.env` file.
