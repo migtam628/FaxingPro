@@ -7,6 +7,7 @@ on:
       - 'server/telnyx*'
       - 'scripts/faxingpro-*.sh'
       - 'scripts/install-faxingpro-*.sh'
+      - 'tests/faxingpro-drive-ci.sh'
       - 'src/types.ts'
       - 'deployment/telnyx/**'
       - 'deployment/nginx.conf'
@@ -36,6 +37,9 @@ jobs:
           bash -n scripts/faxingpro-backup.sh
           bash -n scripts/faxingpro-verify-backup.sh
           bash -n scripts/install-faxingpro-backup-timer.sh
+          bash -n scripts/faxingpro-drive-upload.sh
+          bash -n scripts/install-faxingpro-drive.sh
+          bash -n tests/faxingpro-drive-ci.sh
       - name: Validate Node module syntax
         run: |
           node --check server/telnyx.mjs
@@ -78,6 +82,9 @@ jobs:
           count="$(docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env exec -T db psql -U faxingpro -d faxingpro -tAc 'SELECT count(*) FROM backup_runs')"
           test "$count" -eq 1
           node tests/telnyx-backup-monitor.mjs
+      - name: Verify encrypted Google Drive uploader with a mocked rclone remote
+        run: |
+          bash tests/faxingpro-drive-ci.sh "$RUNNER_TEMP/backup-archives"
       - name: Shutdown test stack
         if: always()
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env down || true
