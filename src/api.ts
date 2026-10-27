@@ -3,6 +3,19 @@ export type ServerFax = {id:string;direction:'inbound'|'outbound';status:string;
   title:string;filename?:string;pages:number;createdAt:string;failureReason?:string;hasDocument:boolean;
   readAt:string|null;archivedAt:string|null};
 export type FaxStats = {received:number;sent:number;pending:number;failed:number};
+export type FaxNotification = {id:string;faxId:string;kind:'incoming'|'failed';title:string;description:string;number:string;createdAt:string};
+export type FaxNotificationFeed = {items:FaxNotification[];total:number};
+export function getNotifications(endpoint:string):Promise<FaxNotificationFeed>{
+  return apiCall<FaxNotificationFeed>(endpoint,'','/api/notifications');
+}
+export function getNotificationPreferences(endpoint:string):Promise<{browserEnabled:boolean}>{
+  return apiCall<{browserEnabled:boolean}>(endpoint,'','/api/notifications/preferences');
+}
+export function setNotificationPreferences(endpoint:string,browserEnabled:boolean):Promise<{browserEnabled:boolean}>{
+  return apiCall<{browserEnabled:boolean}>(endpoint,'','/api/notifications/preferences',
+    {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({browserEnabled})});
+}
+
 export type DailyActivity = {day:string;received:number;sent:number;failed:number};
 export async function getDailyActivity(endpoint:string):Promise<DailyActivity[]>{
   return (await apiCall<{days:DailyActivity[]}>(endpoint,'','/api/reports/daily')).days;
