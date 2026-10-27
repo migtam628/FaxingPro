@@ -8,3 +8,4 @@ server/data/
 .DS_Store
 *.log
 deployment/telnyx/.test-private-key.pem
+deployment/telnyx/.install-profile

@@ -6,6 +6,7 @@ on:
     paths:
       - 'server/telnyx*'
       - 'scripts/faxingpro-*.sh'
+      - 'scripts/install-vps.sh'
       - 'scripts/install-faxingpro-*.sh'
       - 'tests/faxingpro-drive-ci.sh'
       - 'src/types.ts'
@@ -39,6 +40,9 @@ jobs:
       - name: Validate backup and recovery shell syntax
         run: |
           bash -n scripts/faxingpro-backup.sh
+          bash -n scripts/install-vps.sh
+          bash scripts/install-vps.sh --self-test
+          bash scripts/install-vps.sh --help >/dev/null
           bash -n scripts/faxingpro-verify-backup.sh
           bash -n scripts/install-faxingpro-backup-timer.sh
           bash -n scripts/faxingpro-drive-upload.sh
@@ -54,6 +58,11 @@ jobs:
         run: node tests/prepare-telnyx-ci.mjs
       - name: Validate isolated Docker Compose configuration
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env config --quiet
+      - name: Validate optional standalone HTTPS Compose overlay
+        run: |
+          FAXINGPRO_DOMAIN=fax.example.invalid docker compose \
+            -f deployment/telnyx/compose.yaml -f deployment/telnyx/compose.caddy.yaml \
+            --env-file deployment/telnyx/.env config --quiet
       - name: Verify scheduled backup preflight without installing systemd services
         run: |
           sudo apt-get update -qq
