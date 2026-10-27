@@ -465,6 +465,31 @@ const app=http.createServer(async(req,res)=>{
           "count(*) FILTER(WHERE status='failed')::int failed FROM faxes");
         return output(res,200,rows[0]);
       }
+      if(req.method==='GET'&&p==='/api/reports/daily'){
+        const {rows}=await db.query(
+          "SELECT to_char(d.day,'YYYY-MM-DD') AS day, "+
+          "count(f.id) FILTER(WHERE f.direction='inbound')::int AS received, "+
+          "count(f.id) FILTER(WHERE f.direction='outbound')::int AS sent, "+
+          "count(f.id) FILTER(WHERE f.status='failed')::int AS failed "+
+          "FROM generate_series((now() AT TIME ZONE 'UTC')::date-29,"+
+          "(now() AT TIME ZONE 'UTC')::date,interval '1 day') AS d(day) "+
+          "LEFT JOIN faxes f ON (f.created_at AT TIME ZONE 'UTC')::date=d.day::date "+
+          "GROUP BY d.day ORDER BY d.day");
+        return output(res,200,{days:rows,timezone:'UTC',windowDays:30});
+      }
+      const history=p.match(/^\/api\/faxes\/([0-9a-f-]{36})\/events$/i);
+      if(req.method==='GET'&&history){
+        if(!uuid.test(history[1]))return output(res,400,{error:'Invalid fax ID'});
+        const found=await db.query('SELECT telnyx_id,created_at,direction,status FROM faxes WHERE id=$1',[history[1]]);
+        if(!found.rowCount)return output(res,404,{error:'Fax not found'});
+        const fax=found.rows[0];
+        const {rows}=await db.query(
+          "SELECT event_type AS type,occurred_at AS \"occurredAt\" "+
+          "FROM webhook_events WHERE fax_id=$1 ORDER BY occurred_at ASC LIMIT 100",
+          [fax.telnyx_id||'']);
+        return output(res,200,{events:rows,createdAt:fax.created_at,
+          direction:fax.direction,status:fax.status});
+      }
       if(req.method==='POST'&&p==='/api/faxes')return await postFax(req,res);
       const doc=p.match(/^\/api\/faxes\/([0-9a-f-]{36})\/document$/i);
       if(req.method==='GET'&&doc){
