@@ -127,6 +127,11 @@ if [[ $PROXY == auto ]];then
  command -v ss >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2
  port_busy && fail '80/443 occupied; choose --proxy existing. No existing proxy will be changed.'
 fi
+# Reject a conflicting host-loopback port before cloning or creating any volumes.
+command -v ss >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2
+if ss -Hlnt | awk '{print $4}' | grep -Eq ":$PORT$";then
+ fail "Host port $PORT is already occupied. Select another nonprivileged port with --port."
+fi
 [[ ! -e $DIR && ! -L $DIR ]] || fail "Target $DIR already exists. Use --update."
 if command -v docker >/dev/null && docker info >/dev/null 2>&1;then
  for v in faxingpro-telnyx_fax_database faxingpro-telnyx_fax_documents;do
