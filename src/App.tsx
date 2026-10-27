@@ -7,14 +7,17 @@ import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, 
   Trash2, UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
   type LucideIcon } from 'lucide-react';
 import SetupWizard from './SetupWizard';
-import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, getSecurityStatus, revokeAllSessions, downloadFax, submitFax, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus, type SecurityStatus } from './api';
+import ContactsManager from './ContactsManager';
+import PublicLanding from './PublicLanding';
+import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, getSecurityStatus, revokeAllSessions, setFaxFlag, downloadFax, submitFax, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus, type SecurityStatus } from './api';
 import type { Fax, FaxStatus, Page } from './types';
 
 const sections: {group:string;items:{page:Page;label:string;icon:LucideIcon}[]}[] = [
   {group:'WORKSPACE',items:[
     {page:'dashboard',label:'Dashboard',icon:LayoutDashboard},{page:'inbox',label:'Inbox',icon:Inbox},
     {page:'sent',label:'Sent Faxes',icon:Send},{page:'compose',label:'New Fax',icon:FilePlus2},
-    {page:'contacts',label:'Contacts',icon:BookUser},{page:'documents',label:'Documents',icon:FolderOpen}]},
+    {page:'contacts',label:'Contacts',icon:BookUser},{page:'documents',label:'Documents',icon:FolderOpen},
+    {page:'archive',label:'Archive',icon:Archive}]},
   {group:'MANAGEMENT',items:[
     {page:'numbers',label:'Fax Numbers',icon:Phone},{page:'team',label:'Team Members',icon:Users},
     {page:'reports',label:'Activity & Reports',icon:Activity}]},
@@ -36,7 +39,8 @@ function serverToFax(s:ServerFax):Fax{
     s.status==='failed'?'failed':'queued';
   return {id:s.id,title:s.title||s.filename||'Fax',contact:s.direction==='inbound'?s.from:s.to,
     number:s.direction==='inbound'?s.from:s.to,pages:s.pages||0,status,direction:s.direction,
-    createdAt:new Date(s.createdAt).toLocaleString(),source:'live',hasDocument:s.hasDocument};
+    createdAt:new Date(s.createdAt).toLocaleString(),source:'live',hasDocument:s.hasDocument,
+    unread:s.direction==='inbound'&&!s.readAt,archived:!!s.archivedAt};
 }
 function readBase64(file:File):Promise<string> {return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');reader.onerror=()=>reject(new Error('Unable to read file'));reader.readAsDataURL(file);});}
 
@@ -44,6 +48,8 @@ export default function App(){
   const [page,setPage]=useState<Page>('dashboard');
   const [mobileNav,setMobileNav]=useState(false);
   const [activeFax,setActiveFax]=useState<Fax|null>(null);
+  const [archivedFaxes,setArchivedFaxes]=useState<Fax[]>([]);
+  const [unreadOnly,setUnreadOnly]=useState(false);
   const viewerFrame=useRef<HTMLIFrameElement|null>(null);
   const [viewerUrl,setViewerUrl]=useState<string|null>(null);
   const [viewerLoading,setViewerLoading]=useState(false);
@@ -77,12 +83,13 @@ export default function App(){
   const [viewTab,setViewTab]=useState('Details');
   const [settingsTab,setSettingsTab]=useState('General');
   const faxes=useMemo(()=>liveFaxes??[],[liveFaxes]);
-  const current=useMemo(()=>faxes.filter(f=>{
+  const current=useMemo(()=>(page==='archive'?archivedFaxes:faxes).filter(f=>{
     if(page==='inbox' && f.direction!=='inbound')return false;
     if(page==='sent' && f.direction!=='outbound')return false;
     if(page==='queue' && f.status!=='queued' && f.status!=='failed')return false;
+    if(unreadOnly && page==='inbox' && !f.unread)return false;
     return (f.title+' '+f.contact+' '+f.number+' '+f.id).toLowerCase().includes(filter.toLowerCase());
-  }),[faxes,page,filter]);
+  }),[faxes,archivedFaxes,page,filter,unreadOnly]);
   useEffect(()=>{
     // Cookies are scoped to the self-hosted HTTPS origin; never prompt for API_TOKEN on GitHub Pages.
     const endpoint=window.location.origin;
@@ -140,6 +147,14 @@ export default function App(){
     return ()=>{cancelled=true;};
   },[page,boot,apiEndpoint]);
   useEffect(()=>{
+    if(page!=='archive'||boot!=='ready')return;
+    let cancelled=false;
+    listFaxes(apiEndpoint,'',{folder:'archived'}).then(rows=>{
+      if(!cancelled)setArchivedFaxes(rows.map(serverToFax));
+    }).catch(e=>{if(!cancelled)setToast(e instanceof Error?e.message:'Could not load archived faxes');});
+    return ()=>{cancelled=true;};
+  },[page,boot,apiEndpoint]);
+  useEffect(()=>{
     if(page!=='security'||boot!=='ready')return;
     let cancelled=false;
     getSecurityStatus(apiEndpoint).then(data=>{
@@ -188,8 +203,43 @@ export default function App(){
       window.setTimeout(()=>URL.revokeObjectURL(url),1000);
     }catch(error){setToast(error instanceof Error?error.message:'Unable to download fax');}
   }
-  function navigate(p:Page){setPage(p);setMobileNav(false);setFilter('');}
-  function openFax(f:Fax){setActiveFax(f);setViewTab('Details');navigate('viewer');}
+  function navigate(p:Page){setPage(p);setMobileNav(false);setFilter('');setUnreadOnly(false);}
+  async function changeFaxFlag(f:Fax,kind:'read'|'archive',enabled:boolean){
+    try{
+      await setFaxFlag(apiEndpoint,f.id,kind,enabled);
+      if(kind==='read'){
+        const mutate=(x:Fax)=>x.id===f.id?{...x,unread:!enabled}:x;
+        setLiveFaxes(prev=>prev?.map(mutate)??null);
+        setActiveFax(prev=>prev?.id===f.id?mutate(prev):prev);
+      }else{
+        const updated={...f,archived:enabled};
+        if(enabled){
+          setLiveFaxes(prev=>prev?.filter(x=>x.id!==f.id)??null);
+          setArchivedFaxes(prev=>[updated,...prev.filter(x=>x.id!==f.id)]);
+        }else{
+          setArchivedFaxes(prev=>prev.filter(x=>x.id!==f.id));
+          setLiveFaxes(prev=>prev?[updated,...prev.filter(x=>x.id!==f.id)]:null);
+        }
+        setActiveFax(prev=>prev?.id===f.id?updated:prev);
+        setToast(enabled?'Fax archived. Original PDF retained.':'Fax restored to active records.');
+      }
+    }catch(e){setToast(e instanceof Error?e.message:'Unable to update fax record');}
+  }
+  function openFax(f:Fax){
+    setActiveFax(f);setViewTab('Details');navigate('viewer');
+    if(f.direction==='inbound'&&f.unread)void changeFaxFlag(f,'read',true);
+  }
+  async function searchAllHistory(){
+    setRefreshing(true);
+    try{
+      const archived=page==='archive';
+      const rows=await listFaxes(apiEndpoint,'',{folder:archived?'archived':'active',query:filter});
+      if(archived)setArchivedFaxes(rows.map(serverToFax));
+      else setLiveFaxes(rows.map(serverToFax));
+      setToast('Search results loaded from the server (up to 250 records).');
+    }catch(e){setToast(e instanceof Error?e.message:'History search failed');}
+    finally{setRefreshing(false);}
+  }
   async function testConnection(){
     const endpoint=apiEndpoint.trim().replace(/\/$/,'');
     if(!endpoint){setSetupError('Open your self-hosted FaxingPro website to sign in.');return;}
@@ -250,6 +300,7 @@ export default function App(){
     if(value && value.size>10*1024*1024){setToast('PDF must be 10 MB or smaller.');return;}
     setFile(value||null);
   }
+  if(window.location.hostname.endsWith('.github.io'))return <PublicLanding/>;
   if(boot!=='ready'){
     return <SetupWizard mode={boot} endpoint={apiEndpoint}
       token={apiToken} setToken={setApiToken} setup={setupInfo} working={testing}
@@ -262,7 +313,7 @@ export default function App(){
     <aside className={'sidebar '+(mobileNav?'sidebar-open':'')}>
       <div className="brand"><span className="brand-mark"><Printer size={22}/></span><div><strong>FaxingPro</strong><small>ATLAS WORKSPACE</small></div><button className="mobile-close" aria-label="Close menu" onClick={()=>setMobileNav(false)}><X size={18}/></button></div>
       <div className="workspace-switch"><span className="workspace-avatar">FP</span><div><strong>{setupInfo?.workspaceName||'FaxingPro'}</strong><small>Telnyx API connected</small></div></div>
-      <div className="nav-groups">{sections.map(section=><div className="nav-group" key={section.group}><div className="nav-heading">{section.group}</div>{section.items.map(({page:p,label,icon:Icon})=><button key={p} className={'nav-item '+(page===p || (page==='viewer'&&p==='documents')?'nav-active':'')} onClick={()=>navigate(p)}><Icon size={18}/><span>{label}</span>{p==='inbox'&&faxes.filter(f=>f.direction==='inbound').length>0&&<span className="nav-count">{faxes.filter(f=>f.direction==='inbound').length}</span>}</button>)}</div>)}</div>
+      <div className="nav-groups">{sections.map(section=><div className="nav-group" key={section.group}><div className="nav-heading">{section.group}</div>{section.items.map(({page:p,label,icon:Icon})=><button key={p} className={'nav-item '+(page===p || (page==='viewer'&&p==='documents')?'nav-active':'')} onClick={()=>navigate(p)}><Icon size={18}/><span>{label}</span>{p==='inbox'&&faxes.some(f=>f.unread)&&<span className="nav-count">{faxes.filter(f=>f.unread).length}</span>}</button>)}</div>)}</div>
       <div className="sidebar-bottom"><div className="support"><LifeBuoy size={17}/><span>Help & Support</span><ArrowUpRight size={14}/></div><div className="profile"><span className="profile-avatar">FP</span><div><strong>Local Operator</strong><small>Workspace administrator</small></div><MoreHorizontal size={17}/></div></div>
     </aside>
     {mobileNav&&<button className="nav-backdrop" aria-label="Close sidebar" onClick={()=>setMobileNav(false)}/>}
@@ -292,12 +343,15 @@ export default function App(){
         </div>
         <Panel title="Recent Transmissions" action={<button className="link-btn" onClick={()=>navigate('documents')}>View all <ArrowRight size={15}/></button>}>{table(faxes.slice(0,5),false)}</Panel>
       </>}
-      {(page==='inbox'||page==='sent'||page==='documents'||page==='queue')&&<>
-        <div className="page-heading"><div><span className="eyebrow">FAX MANAGEMENT</span><h1>{titleFor(page)}</h1><p>{page==='inbox'?'Manage your incoming fax documents.':page==='sent'?'Track your outgoing fax transmissions.':page==='queue'?'Monitor transmissions that need processing or attention.':'Your searchable document activity.'}</p></div><button className="btn primary" onClick={()=>navigate('compose')}><Plus size={18}/> New Fax</button></div>
+      {(page==='inbox'||page==='sent'||page==='documents'||page==='queue'||page==='archive')&&<>
+        <div className="page-heading"><div><span className="eyebrow">FAX MANAGEMENT</span><h1>{titleFor(page)}</h1><p>{page==='inbox'?'Manage your incoming fax documents.':page==='sent'?'Track your outgoing fax transmissions.':page==='queue'?'Monitor transmissions that need processing or attention.':page==='archive'?'Archived transmissions are retained with their original documents.':'Search and organize real fax history.'}</p></div><button className="btn primary" onClick={()=>navigate('compose')}><Plus size={18}/> New Fax</button></div>
         <div className="content-panel">
-          <div className="table-toolbar"><div className="tabs">{['All records'].map(t=><span key={t} className="tab active-tab">{t}</span>)}</div><div className="table-tools"><label className="search-box"><Search size={16}/><input placeholder="Search faxes..." value={filter} onChange={e=>setFilter(e.target.value)}/></label><button className="subtle-btn" onClick={()=>setToast('Search by document name, number, ID, or contact.')}><Filter size={16}/> Filters</button></div></div>
+          <div className="table-toolbar"><div className="tabs"><button className={'tab '+(!unreadOnly?'active-tab':'')}
+            onClick={()=>setUnreadOnly(false)}>All records</button>
+            {page==='inbox'&&<button className={'tab '+(unreadOnly?'active-tab':'')}
+            onClick={()=>setUnreadOnly(true)}>Unread ({faxes.filter(f=>f.unread).length})</button>}</div><div className="table-tools"><label className="search-box"><Search size={16}/><input placeholder="Search faxes..." value={filter} onChange={e=>setFilter(e.target.value)}/></label><button className="subtle-btn" onClick={()=>void searchAllHistory()} disabled={refreshing}><Search size={16}/> Search history</button></div></div>
           {table(current)}
-          <div className="table-footer"><span>Showing {current.length} records · Live VPS data</span><div><button className="subtle-btn" onClick={()=>refreshLive()} disabled={refreshing}><RefreshCw size={15}/>{refreshing?'Refreshing':'Refresh'}</button><button disabled><ChevronLeft size={17}/></button><strong>1</strong><button disabled><ChevronRight size={17}/></button></div></div>
+          <div className="table-footer"><span>Showing {current.length} records · Live VPS data · Up to 250 per query</span><div><button className="subtle-btn" onClick={()=>refreshLive()} disabled={refreshing}><RefreshCw size={15}/>{refreshing?'Refreshing':'Refresh'}</button><button disabled><ChevronLeft size={17}/></button><strong>1</strong><button disabled><ChevronRight size={17}/></button></div></div>
         </div>
       </>}
       {page==='compose'&&<>
@@ -311,7 +365,7 @@ export default function App(){
         </div><div className="compose-aside"><Panel title="Document preview"><div className="preview-window">{fileUrl?<iframe className="file-preview" title="Selected PDF preview" src={fileUrl}/>:<Empty label="Attach a PDF to preview the actual document before sending."/>}</div><div className="preview-foot"><Eye size={16}/> {file?'Local PDF preview':'No document selected'}</div></Panel><div className="side-info"><LockKeyhole size={19}/><div><strong>Private workspace</strong><p>Attached PDFs remain on this device until submitted. Sent and received documents are encrypted in the private server volume.</p></div></div></div></div>
       </>}
       {page==='viewer'&&activeFax&&<>
-        <div className="page-heading compact"><div><button className="back-link" onClick={()=>navigate('documents')}><ArrowLeft size={16}/> Back to documents</button><h1>{activeFax.title}</h1><p>{activeFax.pages} pages · {activeFax.id} · {activeFax.createdAt}</p></div><div className="heading-actions"><Status value={activeFax.status}/><button className="btn secondary" onClick={downloadCurrent}><Download size={16}/> Download</button><button className="btn primary" onClick={()=>{setRecipient(activeFax.number);navigate('compose');}}><ArrowUpRight size={16}/> Forward</button></div></div>
+        <div className="page-heading compact"><div><button className="back-link" onClick={()=>navigate('documents')}><ArrowLeft size={16}/> Back to documents</button><h1>{activeFax.title}</h1><p>{activeFax.pages} pages · {activeFax.id} · {activeFax.createdAt}</p></div><div className="heading-actions"><Status value={activeFax.status}/><button className="btn secondary" onClick={()=>void changeFaxFlag(activeFax,'archive',!activeFax.archived)}><Archive size={16}/>{activeFax.archived?'Restore':'Archive'}</button><button className="btn secondary" onClick={downloadCurrent}><Download size={16}/> Download</button><button className="btn primary" onClick={()=>{setRecipient(activeFax.number);navigate('compose');}}><ArrowUpRight size={16}/> Forward</button></div></div>
         <div className="viewer-grid"><div className="viewer-area">
           <div className="viewer-tools"><span><FileText size={16}/> Secure PDF viewer</span>
             <div><span>{activeFax.pages||'—'} reported page{activeFax.pages===1?'':'s'}</span>
@@ -326,12 +380,10 @@ export default function App(){
               {activeFax.hasDocument&&<button className="btn secondary" onClick={downloadCurrent}><Download size={16}/> Download PDF</button>}
             </div>}
           </div></div>
-          <aside className="viewer-side"><div className="detail-tabs">{['Details','Activity'].map(t=><button key={t} className={viewTab===t?'current':''} onClick={()=>setViewTab(t)}>{t}</button>)}</div>{viewTab==='Details'?<div className="detail-body"><div className="detail-status"><Status value={activeFax.status}/><span>{activeFax.direction==='inbound'?'Incoming fax':'Outgoing fax'}</span></div>{[['Document',activeFax.title],['From / To',activeFax.contact],['Fax number',activeFax.number],['Pages',String(activeFax.pages)],['Received / Created',activeFax.createdAt],['Transmission ID',activeFax.id],['Source','VPS / Telnyx']].map(([k,v])=><div className="detail-row" key={k}><span>{k}</span><strong>{v}</strong></div>)}</div>:<div className="detail-body"><div className="timeline"><span/><div><strong>Received by FaxingPro</strong><small>{activeFax.createdAt}</small></div></div><p className="field-help">Live transmission event history will require server connectivity.</p></div>}<div className="viewer-side-actions"><button onClick={downloadCurrent}><Download size={16}/> Download PDF</button><button onClick={()=>{setRecipient(activeFax.number);navigate('compose');}}><ArrowUpRight size={16}/> Forward as fax</button><button onClick={()=>setToast('Fax deletion requires a retention policy and is not available yet.')}><Trash2 size={16}/> Delete</button></div></aside></div>
+          <aside className="viewer-side"><div className="detail-tabs">{['Details','Activity'].map(t=><button key={t} className={viewTab===t?'current':''} onClick={()=>setViewTab(t)}>{t}</button>)}</div>{viewTab==='Details'?<div className="detail-body"><div className="detail-status"><Status value={activeFax.status}/><span>{activeFax.direction==='inbound'?'Incoming fax':'Outgoing fax'}</span></div>{[['Document',activeFax.title],['From / To',activeFax.contact],['Fax number',activeFax.number],['Pages',String(activeFax.pages)],['Received / Created',activeFax.createdAt],['Transmission ID',activeFax.id],['Source','VPS / Telnyx']].map(([k,v])=><div className="detail-row" key={k}><span>{k}</span><strong>{v}</strong></div>)}</div>:<div className="detail-body"><div className="timeline"><span/><div><strong>Received by FaxingPro</strong><small>{activeFax.createdAt}</small></div></div><p className="field-help">Live transmission event history will require server connectivity.</p></div>}<div className="viewer-side-actions"><button onClick={downloadCurrent}><Download size={16}/> Download PDF</button><button onClick={()=>{setRecipient(activeFax.number);navigate('compose');}}><ArrowUpRight size={16}/> Forward as fax</button>{activeFax.direction==='inbound'&&<button onClick={()=>void changeFaxFlag(activeFax,'read',!!activeFax.unread)}><Eye size={16}/>{activeFax.unread?'Mark read':'Mark unread'}</button>}
+            <button onClick={()=>void changeFaxFlag(activeFax,'archive',!activeFax.archived)}><Archive size={16}/>{activeFax.archived?'Restore from archive':'Archive without deleting'}</button></div></aside></div>
       </>}
-      {page==='contacts'&&<>
-        <div className="page-heading"><div><span className="eyebrow">DIRECTORY</span><h1>Contacts</h1><p>Contact management is not yet configured.</p></div></div>
-        <Panel title="Contact directory"><Empty label="No contacts yet. Contact editing and persistence are scheduled for a future release."/></Panel>
-      </>}
+      {page==='contacts'&&<ContactsManager endpoint={apiEndpoint} onFax={number=>{setRecipient(number);navigate('compose');}}/>}
       {page==='numbers'&&<>
         <div className="page-heading"><div><span className="eyebrow">PHONE SERVICES</span><h1>Fax Number</h1>
           <p>Your number is managed by Telnyx Mission Control.</p></div></div>
@@ -414,7 +466,7 @@ export default function App(){
           </Panel>}
         </div></div>
       </>}
-      <footer className="app-footer"><span>FaxingPro · ATLAS v0.4 · Live backend</span><span><span className="footer-dot"/> {health?.faxEnabled?'Telnyx outbound pilot enabled':'Outbound sending locked'}</span></footer>
+      <footer className="app-footer"><span>FaxingPro · ATLAS v0.6 · Live backend</span><span><span className="footer-dot"/> {health?.faxEnabled?'Telnyx outbound pilot enabled':'Outbound sending locked'}</span></footer>
       </main>
     </div>
     {toast&&<div className="toast"><span>{toast}</span><button aria-label="Dismiss notification" onClick={()=>setToast('')}><X size={17}/></button></div>}
