@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
   BookUser, CheckCircle2, ChevronLeft, ChevronRight,
-  CircleHelp, Clock3, Cloud, Download, FilePlus2, FileText, Filter, FolderOpen,
+  CircleHelp, Clock3, Cloud, Download, FilePlus2, FileText, FolderOpen,
   HardDrive, Inbox, LayoutDashboard, LifeBuoy, LockKeyhole, Menu, MoreHorizontal,
   Phone, Plus, Printer, Search, Send, Server, Settings2, ShieldCheck,
-  Trash2, UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
+  UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
   type LucideIcon } from 'lucide-react';
 import SetupWizard from './SetupWizard';
 import ContactsManager from './ContactsManager';

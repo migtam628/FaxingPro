@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
-import {BookUser,Search,Plus,Phone,Save,Trash2,X,RefreshCw,Pencil,Send} from 'lucide-react';
+import {BookUser,Search,Plus,Save,Trash2,X,RefreshCw,Pencil,Send} from 'lucide-react';
 import {createContact,deleteContact,getContacts,updateContact,type FaxContact,type ContactInput} from './api';
 
 const empty:ContactInput={name:'',number:'',email:'',company:'',notes:''};
