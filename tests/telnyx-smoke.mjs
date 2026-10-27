@@ -41,6 +41,26 @@ assert.ok(signedIn.headers.get('set-cookie')?.includes('SameSite=Strict'));
 const cookieHeader={Cookie:cookie};
 assert.equal((await (await request('/api/session',{headers:cookieHeader})).json()).authenticated,true);
 assert.equal((await request('/api/faxes',{headers:cookieHeader})).status,200);
+const beforeSetup=await (await request('/api/setup',{headers:cookieHeader})).json();
+assert.equal(beforeSetup.complete,false);
+assert.equal(beforeSetup.configured.apiKey,true);
+assert.equal(beforeSetup.configured.phoneNumber,true);
+assert.equal(beforeSetup.fromNumber,'+13055551234');
+assert.equal(beforeSetup.provider,'Telnyx Programmable Fax');
+const invalidSetup=await request('/api/setup',{method:'POST',
+  headers:{...cookieHeader,'Content-Type':'application/json'},
+  body:JSON.stringify({workspaceName:'X',timezone:'Unknown/Zone'})});
+assert.equal(invalidSetup.status,400);
+const savedSetup=await request('/api/setup',{method:'POST',
+  headers:{...cookieHeader,'Content-Type':'application/json'},
+  body:JSON.stringify({workspaceName:'FaxingPro Business',timezone:'America/New_York'})});
+assert.equal(savedSetup.status,200);
+const setupResult=await savedSetup.json();
+assert.equal(setupResult.complete,true);
+assert.equal(setupResult.workspaceName,'FaxingPro Business');
+assert.equal((await (await request('/api/setup',{headers:cookieHeader})).json()).complete,true);
+assert.equal((await request('/api/setup')).status,401);
+
 
 const faxId=randomUUID(),eventId=randomUUID();
 const obj={data:{id:eventId,event_type:'fax.receiving.started',
@@ -69,4 +89,4 @@ const bad=await request('/webhooks/telnyx',{method:'POST',headers:{'Content-Type
 assert.equal(bad.status,401);
 const send=await request('/api/faxes',{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:'{}'});
 assert.equal(send.status,503,'Outbound must remain locked');
-console.log('PASS: health, 7-day secure login cookie, session authentication/logout, signed webhook, idempotency, database persistence, outbound lock');
+console.log('PASS: health, first-run setup persistence, configuration validation, secure login, auth/logout, signed webhook, idempotency, database persistence, outbound lock');
