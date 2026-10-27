@@ -6,6 +6,7 @@ on:
     paths:
       - 'server/telnyx*'
       - 'scripts/faxingpro-*.sh'
+      - 'scripts/install-faxingpro-*.sh'
       - 'src/types.ts'
       - 'deployment/telnyx/**'
       - 'deployment/nginx.conf'
