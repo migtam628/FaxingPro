@@ -28,6 +28,11 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: API tests
         run: npm test
+      - name: Validate desktop entrypoint
+        run: |
+          node --check electron/main.cjs
+          node --check electron/preload.cjs
+          test -s electron/connect.html
       - name: Build web app
         run: npm run build
 
@@ -100,5 +105,5 @@ jobs:
             gh release create "$tag" "${files[@]}" --verify-tag --title "FaxingPro $tag" --generate-notes
           else
             tag="v0.1.0-preview.${GITHUB_RUN_NUMBER}"
-            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "FaxingPro $tag" --prerelease --notes "Preview desktop builds for Windows, macOS (Intel/Apple silicon), and Linux. The web UI runs in demo mode. PSTN/SIP fax delivery is not implemented in this preview."
+            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "FaxingPro $tag" --prerelease --notes "Unsigned preview desktop builds for Windows, macOS (Intel/Apple silicon), and Linux. On first launch, connect to your OWN trusted HTTPS FaxingPro server; the installer does not contain a backend or demo data. Production faxing is provided by your self-hosted Telnyx service with the server-side TEST_DESTINATION restrictions. Review the README and deployment guide before use."
           fi
