@@ -19,6 +19,14 @@ compose=(docker compose -f "$repo/deployment/telnyx/compose.yaml" --env-file "$e
 volume="faxingpro-telnyx_fax_documents"
 docker volume inspect "$volume" >/dev/null
 mkdir -p "$backup_root"; chmod 0700 "$backup_root"
+# Prevent overlapping scheduled/manual archive jobs on the same host.
+command -v flock >/dev/null || { echo "ERROR: util-linux flock is required" >&2; exit 2; }
+mkdir -p "$backup_root"; chmod 0700 "$backup_root"
+exec 9>"$backup_root/.backup.lock"
+if ! flock -n 9; then
+  echo "ERROR: another FaxingPro backup is already running" >&2
+  exit 3
+fi
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 out="$backup_root/$stamp"
 work="$(mktemp -d "$backup_root/.${stamp}.partial.XXXXXXXX")"
