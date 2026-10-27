@@ -123,11 +123,31 @@ assert.equal(timeline.status,200);
 assert.ok((await timeline.json()).events.some(e=>e.type==='fax.receiving.started'));
 
 assert.equal(faxRecord.readAt,null);
+assert.equal((await request('/api/notifications')).status,401);
+assert.equal((await request('/api/notifications/preferences')).status,401);
+const preferences=await request('/api/notifications/preferences',{headers:auth});
+assert.equal(preferences.status,200);
+assert.equal((await preferences.json()).browserEnabled,false);
+const invalidPreference=await request('/api/notifications/preferences',{method:'PATCH',
+  headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify({browserEnabled:'yes'})});
+assert.equal(invalidPreference.status,400);
+const enabledPreference=await request('/api/notifications/preferences',{method:'PATCH',
+  headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify({browserEnabled:true})});
+assert.equal(enabledPreference.status,200);
+assert.equal((await enabledPreference.json()).browserEnabled,true);
+const notificationBefore=await (await request('/api/notifications',{headers:auth})).json();
+assert.ok(notificationBefore.items.some(n=>n.faxId===faxRecord.id&&n.kind==='incoming'));
+assert.ok(notificationBefore.total>=1);
+
 assert.equal(faxRecord.archivedAt,null);
 assert.equal((await request('/api/faxes/'+faxRecord.id+'/read',{method:'PATCH',
   headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify({enabled:true})})).status,200);
 const afterRead=await (await request('/api/faxes?folder=active',{headers:auth})).json();
 assert.ok(afterRead.items.some(f=>f.id===faxRecord.id&&f.readAt));
+assert.ok(!(await (await request('/api/notifications',{headers:auth})).json())
+  .items.some(n=>n.faxId===faxRecord.id&&n.kind==='incoming'),
+  'Marking the fax read removes unread notification');
+
 assert.equal((await request('/api/faxes/'+faxRecord.id+'/archive',{method:'PATCH',
   headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify({enabled:true})})).status,200);
 assert.ok(!(await (await request('/api/faxes?folder=active',{headers:auth})).json())
@@ -187,4 +207,4 @@ const bad=await request('/webhooks/telnyx',{method:'POST',headers:{'Content-Type
 assert.equal(bad.status,401);
 const send=await request('/api/faxes',{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:'{}'});
 assert.equal(send.status,503,'Outbound must remain locked');
-console.log('PASS: contacts CRUD, read/unread, archive, server-side search, 30-day reporting, signed fax event timeline, backups, login throttling and safety restrictions');
+console.log('PASS: authenticated notification preferences, real unread alerts, contacts, fax archives, signed events, 30-day reports, backups, login throttling and safety restrictions');
