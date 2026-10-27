@@ -33,6 +33,11 @@ jobs:
           node --check electron/main.cjs
           node --check electron/preload.cjs
           test -s electron/connect.html
+      - name: Validate standalone VPS installer
+        run: |
+          bash -n scripts/install-vps.sh
+          bash scripts/install-vps.sh --self-test
+          bash scripts/install-vps.sh --help >/dev/null
       - name: Build web app
         run: npm run build
 
@@ -83,6 +88,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - name: Download installers
         uses: actions/download-artifact@v4
         with:
@@ -105,10 +111,14 @@ jobs:
             echo "Expected multi-platform installers; got ${#files[@]}" >&2
             exit 1
           fi
+          cp scripts/install-vps.sh release-files/faxingpro-install.sh
+          chmod 0755 release-files/faxingpro-install.sh
+          (cd release-files && sha256sum *.exe *.dmg *.AppImage *.deb faxingpro-install.sh > SHA256SUMS)
+          files+=(release-files/faxingpro-install.sh release-files/SHA256SUMS)
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tag="${GITHUB_REF#refs/tags/}"
             gh release create "$tag" "${files[@]}" --verify-tag --title "FaxingPro $tag" --generate-notes
           else
             tag="v0.1.0-preview.${GITHUB_RUN_NUMBER}"
-            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "FaxingPro $tag" --prerelease --notes "Unsigned preview desktop builds for Windows, macOS (Intel/Apple silicon), and Linux. On first launch, connect to your OWN trusted HTTPS FaxingPro server; the installer does not contain a backend or demo data. Production faxing is provided by your self-hosted Telnyx service with the server-side TEST_DESTINATION restrictions. Review the README and deployment guide before use."
+            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "FaxingPro $tag" --prerelease --notes "Unsigned preview desktop builds for Windows, macOS (Intel/Apple silicon), and Linux; download faxingpro-install.sh for guided Ubuntu VPS installation. On first launch, connect to your OWN trusted HTTPS FaxingPro server; the installer does not contain a backend or demo data. Production faxing is provided by your self-hosted Telnyx service with the server-side TEST_DESTINATION restrictions. Review the README and deployment guide before use."
           fi
