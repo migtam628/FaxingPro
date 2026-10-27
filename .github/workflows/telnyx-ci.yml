@@ -50,6 +50,23 @@ jobs:
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --build
       - name: Verify signed webhooks, auth, and persistent fax rows
         run: node tests/telnyx-smoke.mjs
+      - name: Exercise real encrypted backup streams and manifest
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          age-keygen -o "$RUNNER_TEMP/recovery-identity.txt"
+          recipient="$(age-keygen -y "$RUNNER_TEMP/recovery-identity.txt")"
+          FAXINGPRO_AGE_RECIPIENT="$recipient" FAXINGPRO_BACKUP_DIR="$RUNNER_TEMP/backup-archives" bash scripts/faxingpro-backup.sh
+          archive="$(find "$RUNNER_TEMP/backup-archives" -mindepth 1 -maxdepth 1 -type d | head -1)"
+          test -n "$archive"
+          (cd "$archive" && sha256sum -c SHA256SUMS)
+          age -d -i "$RUNNER_TEMP/recovery-identity.txt" "$archive/database.dump.age" |
+            docker run --rm -i --network none postgres:17-alpine pg_restore --list > /dev/null
+          age -d -i "$RUNNER_TEMP/recovery-identity.txt" "$archive/documents.tar.age" | tar -tf - > /dev/null
+          age -d -i "$RUNNER_TEMP/recovery-identity.txt" "$archive/config.env.age" |
+            awk '/^STORAGE_ENCRYPTION_KEY=/{found=1} END{exit !found}'
+          count="$(docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env exec -T db psql -U faxingpro -d faxingpro -tAc 'SELECT count(*) FROM backup_runs')"
+          test "$count" -eq 1
       - name: Shutdown test stack
         if: always()
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env down || true
