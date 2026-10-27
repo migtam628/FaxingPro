@@ -1,7 +1,30 @@
 export type Health = { ok:boolean; service:string; transport:string; faxEnabled:boolean };
 export type ServerFax = {id:string;direction:'inbound'|'outbound';status:string;from:string;to:string;
-  title:string;filename?:string;pages:number;createdAt:string;failureReason?:string;hasDocument:boolean};
+  title:string;filename?:string;pages:number;createdAt:string;failureReason?:string;hasDocument:boolean;
+  readAt:string|null;archivedAt:string|null};
 export type FaxStats = {received:number;sent:number;pending:number;failed:number};
+export type FaxContact = {id:string;name:string;number:string;email:string;company:string;notes:string;createdAt:string;updatedAt:string};
+export type ContactInput = Pick<FaxContact,'name'|'number'|'email'|'company'|'notes'>;
+export async function getContacts(endpoint:string,query=''):Promise<FaxContact[]>{
+  const path='/api/contacts'+(query?'?q='+encodeURIComponent(query):'');
+  return (await apiCall<{items:FaxContact[]}>(endpoint,'',path)).items;
+}
+export function createContact(endpoint:string,input:ContactInput):Promise<FaxContact>{
+  return apiCall<FaxContact>(endpoint,'','/api/contacts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
+}
+export function updateContact(endpoint:string,id:string,input:ContactInput):Promise<FaxContact>{
+  return apiCall<FaxContact>(endpoint,'','/api/contacts/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
+}
+export function deleteContact(endpoint:string,id:string):Promise<{deleted:boolean}>{
+  return apiCall<{deleted:boolean}>(endpoint,'','/api/contacts/'+encodeURIComponent(id),{method:'DELETE'});
+}
+export type FaxUpdate = Pick<ServerFax,'id'|'readAt'|'archivedAt'>;
+export function setFaxFlag(endpoint:string,id:string,field:'read'|'archive',enabled:boolean):Promise<ServerFax>{
+  return apiCall<ServerFax>(endpoint,'','/api/faxes/'+encodeURIComponent(id)+'/'+field,{
+    method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})
+  });
+}
+
 export type OperatorSession = {authenticated:boolean;expiresAt:string|null};
 export type SecurityStatus = {
   activeSessions:number;failedLogins24h:number;
