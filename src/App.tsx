@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
-import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
+import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight,
   BookUser, CheckCircle2, ChevronLeft, ChevronRight,
   CircleHelp, Clock3, Cloud, Download, FilePlus2, FileText, FolderOpen,
   HardDrive, Inbox, LayoutDashboard, LifeBuoy, LockKeyhole, Menu, MoreHorizontal,
@@ -7,6 +7,7 @@ import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, 
   UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
   type LucideIcon } from 'lucide-react';
 import SetupWizard from './SetupWizard';
+import NotificationCenter from './NotificationCenter';
 import ContactsManager from './ContactsManager';
 import PublicLanding from './PublicLanding';
 import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, getSecurityStatus, revokeAllSessions, setFaxFlag, getFaxEvents, getDailyActivity, downloadFax, submitFax, type DailyActivity, type FaxEvent, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus, type SecurityStatus } from './api';
@@ -250,6 +251,17 @@ export default function App(){
     setActiveFax(f);setViewTab('Details');navigate('viewer');
     if(f.direction==='inbound'&&f.unread)void changeFaxFlag(f,'read',true);
   }
+  async function openFromNotification(id:string){
+    let found=[...faxes,...archivedFaxes].find(f=>f.id===id);
+    if(!found){
+      try{
+        const results=await listFaxes(apiEndpoint,'',{folder:'all',query:id});
+        found=results.map(serverToFax).find(x=>x.id===id);
+      }catch(error){setToast(error instanceof Error?error.message:'Cannot open notification');return;}
+    }
+    if(found)openFax(found);
+    else setToast('Fax record no longer found. Refresh your inbox.');
+  }
   async function searchAllHistory(){
     setRefreshing(true);
     try{
@@ -339,7 +351,7 @@ export default function App(){
     </aside>
     {mobileNav&&<button className="nav-backdrop" aria-label="Close sidebar" onClick={()=>setMobileNav(false)}/>}
     <div className="main-area">
-      <header className="topbar"><div className="top-left"><button className="mobile-menu icon-btn" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><div className="breadcrumbs">Workspace <ChevronRight size={14}/> <strong>{titleFor(page)}</strong></div></div><div className="top-right"><span className="demo-pill"><span className="pulse-dot"/> LIVE RECORDS</span><button className="top-search" onClick={()=>navigate('documents')}><Search size={16}/> Search faxes & documents <span>⌘ K</span></button><button className="icon-btn" aria-label="Help" onClick={()=>setToast('FaxingPro · Telnyx-powered live fax workspace.')}><CircleHelp size={18}/></button><button className="icon-btn" aria-label="Notifications" onClick={()=>setToast('Notifications are not implemented yet. Check the Inbox for new faxes.')}><Bell size={18}/></button><span className="top-avatar">FP</span></div></header>
+      <header className="topbar"><div className="top-left"><button className="mobile-menu icon-btn" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><div className="breadcrumbs">Workspace <ChevronRight size={14}/> <strong>{titleFor(page)}</strong></div></div><div className="top-right"><span className="demo-pill"><span className="pulse-dot"/> LIVE RECORDS</span><button className="top-search" onClick={()=>navigate('documents')}><Search size={16}/> Search faxes & documents <span>⌘ K</span></button><button className="icon-btn" aria-label="Help" onClick={()=>setToast('FaxingPro · Telnyx-powered live fax workspace.')}><CircleHelp size={18}/></button><NotificationCenter endpoint={apiEndpoint} onOpen={id=>void openFromNotification(id)}/><span className="top-avatar">FP</span></div></header>
       <main className="content">
       {page==='dashboard'&&<>
         <div className="page-heading"><div><span className="eyebrow">{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).toUpperCase()}</span><h1>Good morning <span className="wave">✳</span></h1><p>Here's what's happening across your fax workspace.</p></div><button className="btn primary" onClick={()=>navigate('compose')}><Plus size={18}/> New Fax</button></div>
@@ -505,7 +517,7 @@ export default function App(){
           </Panel>}
         </div></div>
       </>}
-      <footer className="app-footer"><span>FaxingPro · ATLAS v0.7 · Live backend</span><span><span className="footer-dot"/> {health?.faxEnabled?'Telnyx outbound pilot enabled':'Outbound sending locked'}</span></footer>
+      <footer className="app-footer"><span>FaxingPro · ATLAS v0.8 · Live backend</span><span><span className="footer-dot"/> {health?.faxEnabled?'Telnyx outbound pilot enabled':'Outbound sending locked'}</span></footer>
       </main>
     </div>
     {toast&&<div className="toast"><span>{toast}</span><button aria-label="Dismiss notification" onClick={()=>setToast('')}><X size={17}/></button></div>}
