@@ -6,8 +6,8 @@ import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, 
   Phone, Plus, Printer, Search, Send, Server, Settings2, ShieldCheck,
   Trash2, UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
   type LucideIcon } from 'lucide-react';
-import { demoFaxes, contacts } from './demo';
-import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, downloadFax, submitFax, type Health, type FaxStats, type ServerFax } from './api';
+import SetupWizard from './SetupWizard';
+import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, downloadFax, submitFax, type Health, type FaxStats, type ServerFax, type SetupState } from './api';
 import type { Fax, FaxStatus, Page } from './types';
 
 const sections: {group:string;items:{page:Page;label:string;icon:LucideIcon}[]}[] = [
@@ -19,20 +19,17 @@ const sections: {group:string;items:{page:Page;label:string;icon:LucideIcon}[]}[
     {page:'numbers',label:'Fax Numbers',icon:Phone},{page:'team',label:'Team Members',icon:Users},
     {page:'reports',label:'Activity & Reports',icon:Activity}]},
   {group:'SYSTEM',items:[
-    {page:'server',label:'Fax Server',icon:Server},{page:'sip',label:'SIP & T.38',icon:Wifi},
+    {page:'server',label:'Fax Server',icon:Server},{page:'sip',label:'Fax Transport',icon:Wifi},
     {page:'queue',label:'Job Queue',icon:Clock3},{page:'security',label:'Security',icon:ShieldCheck},
     {page:'settings',label:'Settings',icon:Settings2}]}
 ];
 const titleFor = (p: Page) => p==='viewer' ? 'Document Viewer' : sections.flatMap(s=>s.items).find(s=>s.page===p)?.label || 'FaxHub';
 const statusClass = (status:FaxStatus) => 'status status-' + status;
 const prettyStatus = (s:FaxStatus) => s[0].toUpperCase()+s.substring(1);
-const demoBars = [30,43,37,52,44,65,51,72,58,79,64,89,76,67,81,59,85,70,90,76,94,82,73,88,70,91,84,69];
 function IconBadge({icon:Icon,kind='blue'}:{icon:LucideIcon;kind?:string}) {return <span className={'icon-badge badge-'+kind}><Icon size={18}/></span>;}
 function Status({value}:{value:FaxStatus}) {return <span className={statusClass(value)}><span className="status-dot"/>{prettyStatus(value)}</span>;}
 function Panel({title,children,action}:{title:string;children:ReactNode;action?:ReactNode}) {return <section className="panel"><div className="panel-header"><h3>{title}</h3>{action}</div>{children}</section>;}
 function Empty({label}:{label:string}) {return <div className="empty"><FileText size={30}/><strong>Nothing here yet</strong><span>{label}</span></div>;}
-const localKey='faxingpro-atlas-drafts-v1';
-function loadDrafts():Fax[] {try {const v=JSON.parse(localStorage.getItem(localKey)||'[]') as Fax[];return Array.isArray(v)?v:[];} catch {return [];}}
 function serverToFax(s:ServerFax):Fax{
   const status:FaxStatus=s.status==='delivered'?'sent':s.status==='received'?'received':
     s.status==='failed'?'failed':'queued';
@@ -46,8 +43,10 @@ function readBase64(file:File):Promise<string> {return new Promise((resolve,reje
 export default function App(){
   const [page,setPage]=useState<Page>('dashboard');
   const [mobileNav,setMobileNav]=useState(false);
-  const [drafts,setDrafts]=useState<Fax[]>(loadDrafts);
-  const [activeFax,setActiveFax]=useState<Fax>(demoFaxes[0]);
+  const [activeFax,setActiveFax]=useState<Fax|null>(null);
+  const [boot,setBoot]=useState<'checking'|'signin'|'setup'|'ready'>('checking');
+  const [setupInfo,setSetupInfo]=useState<SetupState|null>(null);
+  const [setupError,setSetupError]=useState('');
   const [filter,setFilter]=useState('');
   const [toast,setToast]=useState('');
   const [recipient,setRecipient]=useState('');
@@ -69,31 +68,36 @@ export default function App(){
   const [folder,setFolder]=useState('All inbox');
   const [viewTab,setViewTab]=useState('Details');
   const [settingsTab,setSettingsTab]=useState('General');
-  const faxes=useMemo(()=>liveFaxes===null?[...drafts,...demoFaxes]:liveFaxes,
-    [drafts,liveFaxes]);
+  const faxes=useMemo(()=>liveFaxes??[],[liveFaxes]);
   const current=useMemo(()=>faxes.filter(f=>{
     if(page==='inbox' && f.direction!=='inbound')return false;
     if(page==='sent' && f.direction!=='outbound')return false;
     if(page==='documents' && f.status==='draft')return false;
     if(page==='queue' && f.status!=='queued' && f.status!=='failed')return false;
     if(folder==='Unread' && page==='inbox' && !f.unread)return false;
-    if(folder==='Drafts' && page==='sent' && f.status!=='draft')return false;
     return (f.title+' '+f.contact+' '+f.number+' '+f.id).toLowerCase().includes(filter.toLowerCase());
   }),[faxes,page,filter,folder]);
-  useEffect(()=>{localStorage.setItem(localKey,JSON.stringify(drafts));},[drafts]);
   useEffect(()=>{
-    // Restore a server-issued HttpOnly cookie after a refresh. Never persist API_TOKEN in JS storage.
+    // Cookies are scoped to the self-hosted HTTPS origin; never prompt for API_TOKEN on GitHub Pages.
     const endpoint=window.location.origin;
-    if(window.location.hostname.endsWith('.github.io')||window.location.protocol==='file:')return;
+    if(window.location.hostname.endsWith('.github.io')||window.location.protocol==='file:'){
+      setBoot('signin');return;
+    }
     let cancelled=false;
     (async()=>{
       const session=await getSession(endpoint);
-      if(!session.authenticated)return;
-      const [status,items,counters]=await Promise.all([
-        checkApi(endpoint),listFaxes(endpoint),getStats(endpoint)]);
+      if(!session.authenticated){
+        if(!cancelled)setBoot('signin');
+        return;
+      }
+      const [details,status,items,counters]=await Promise.all([
+        getSetup(endpoint),checkApi(endpoint),listFaxes(endpoint),getStats(endpoint)]);
       if(cancelled)return;
-      setApiEndpoint(endpoint);setHealth(status);setLiveFaxes(items.map(serverToFax));setStats(counters);
-    })().catch(()=>{ /* Not signed in, or server unavailable: use preview until operator signs in. */ });
+      setSetupInfo(details);setHealth(status);setLiveFaxes(items.map(serverToFax));setStats(counters);
+      setBoot(details.complete?'ready':'setup');
+    })().catch(()=>{
+      if(!cancelled){setBoot('signin');setSetupError('Cannot restore your session. Check that the FaxingPro API is running.');}
+    });
     return ()=>{cancelled=true;};
   },[]);
   useEffect(()=>{if(!toast)return;const timer=window.setTimeout(()=>setToast(''),4500);return ()=>clearTimeout(timer);},[toast]);
@@ -108,7 +112,7 @@ export default function App(){
     finally{setRefreshing(false);}
   }
   async function downloadCurrent(){
-    if(activeFax.source!=='live'){setToast('Only live records with stored PDFs can be downloaded.');return;}
+    if(!activeFax||activeFax.source!=='live'){setToast('Only live records with stored PDFs can be downloaded.');return;}
     try{
       const file=await downloadFax(apiEndpoint,apiToken,activeFax.id);
       const url=URL.createObjectURL(file),a=document.createElement('a');
@@ -118,42 +122,49 @@ export default function App(){
   }
   function navigate(p:Page){setPage(p);setMobileNav(false);setFilter('');setFolder('All inbox');}
   function openFax(f:Fax){setActiveFax(f);setViewTab('Details');navigate('viewer');}
-  function saveDraft(){
-    if(!recipient.trim() && !file) {setToast('Add a recipient or document before saving.');return;}
-    const fax:Fax={id:'DRAFT-'+Date.now(),title:file?.name||subject||'Untitled draft',contact:recipient||'No recipient',number:recipient||'Not set',pages:1,status:'draft',direction:'outbound',createdAt:formatNow(),source:'local'};
-    setDrafts(d=>[fax,...d]);setToast('Draft saved locally. Attached file bytes are not persisted in demo mode.');navigate('sent');
-  }
   async function testConnection(){
     const endpoint=apiEndpoint.trim().replace(/\/$/,'');
-    if(!endpoint){setToast('Enter the FaxingPro API URL first.');return;}
+    if(!endpoint){setSetupError('Open your self-hosted FaxingPro website to sign in.');return;}
     let site:URL;
-    try{site=new URL(endpoint);}catch{setToast('Enter a valid API base URL.');return;}
+    try{site=new URL(endpoint);}catch{setSetupError('Invalid server URL.');return;}
     if(site.origin!==window.location.origin){
-      setToast('For security, open and sign in directly on the FaxingPro HTTPS website.');return;
+      setSetupError('Sign in directly on your FaxingPro HTTPS website.');return;
     }
-    setTesting(true);
+    setTesting(true);setSetupError('');
     try{
       const status=await checkApi(endpoint);
-      const session=apiToken.trim()
-        ? await createSession(endpoint,apiToken.trim())
-        : await getSession(endpoint);
-      if(!session.authenticated){
-        setToast('Enter your API_TOKEN to sign in.');return;
-      }
-      const [items,counters]=await Promise.all([listFaxes(endpoint),getStats(endpoint)]);
-      setHealth(status);setLiveFaxes(items.map(serverToFax));setStats(counters);
+      const session=apiToken.trim()?await createSession(endpoint,apiToken.trim()):await getSession(endpoint);
+      if(!session.authenticated)throw Error('Enter a valid API_TOKEN from your VPS.');
+      const [details,items,counters]=await Promise.all([getSetup(endpoint),listFaxes(endpoint),getStats(endpoint)]);
       setApiToken('');
-      setToast('Connected securely. Your login stays active for 7 days unless you sign out.');
+      setSetupInfo(details);setHealth(status);setLiveFaxes(items.map(serverToFax));setStats(counters);
+      setBoot(details.complete?'ready':'setup');
+      setToast('Connected securely. Your session is retained for seven days.');
     }catch(error){
+      setSetupError(error instanceof Error?error.message:'Connection failed');
       setHealth(null);setLiveFaxes(null);setStats(null);
-      setToast(error instanceof Error?error.message:'Could not sign in');
     }finally{setTesting(false);}
+  }
+  async function recheckSetup(){
+    setTesting(true);setSetupError('');
+    try{setSetupInfo(await getSetup(apiEndpoint));}
+    catch(error){setSetupError(error instanceof Error?error.message:'Gateway validation failed');}
+    finally{setTesting(false);}
+  }
+  async function finishSetup(name:string,timezone:string){
+    setTesting(true);setSetupError('');
+    try{
+      const result=await completeSetup(apiEndpoint,name,timezone);
+      setSetupInfo(result);setBoot('ready');
+      await refreshLive(apiEndpoint,'');
+    }catch(error){setSetupError(error instanceof Error?error.message:'Could not finish setup');}
+    finally{setTesting(false);}
   }
   async function signOut(){
     try{await destroySession(apiEndpoint);}
     catch(error){setToast(error instanceof Error?error.message:'Unable to sign out');return;}
     setApiToken('');setHealth(null);setLiveFaxes(null);setStats(null);
-    setToast('Signed out. Your operator session was revoked.');
+    setBoot('signin');setSetupError('');
   }
   async function sendFax(){
     if(!recipient.trim()||!file){setToast('A recipient and PDF document are required.');return;}
@@ -170,6 +181,11 @@ export default function App(){
     if(value && value.type!=='application/pdf'){setToast('Only PDF files are accepted in this starter version.');return;}
     if(value && value.size>10*1024*1024){setToast('PDF must be 10 MB or smaller.');return;}
     setFile(value||null);
+  }
+  if(boot!=='ready'){
+    return <SetupWizard mode={boot==='ready'?'checking':boot} endpoint={apiEndpoint}
+      token={apiToken} setToken={setApiToken} setup={setupInfo} working={testing}
+      error={setupError} onConnect={testConnection} onReload={recheckSetup} onFinish={finishSetup}/>;
   }
   const table = (items:Fax[],showCheckbox=true)=><div className="table-scroll"><table className="fax-table"><thead><tr>{showCheckbox&&<th className="check-col"><input aria-label="Select all" type="checkbox" disabled/></th>}<th>Document / Contact</th><th>Fax number</th><th>Status</th><th>Pages</th><th>Date</th><th></th></tr></thead><tbody>{items.map(f=><tr key={f.id} onClick={()=>openFax(f)} className="click-row">{showCheckbox&&<td onClick={e=>e.stopPropagation()}><input type="checkbox" aria-label={'Select '+f.id} disabled/></td>}<td><div className="file-cell"><span className="pdf-icon"><FileText size={16}/></span><span><strong>{f.title}</strong><small>{f.contact}</small></span>{f.unread&&<span className="new-dot"/>}</div></td><td>{f.number}</td><td><Status value={f.status}/></td><td>{f.pages}</td><td>{f.createdAt}</td><td><ChevronRight size={17}/></td></tr>)}</tbody></table>{items.length===0&&<Empty label="Try a different search or folder."/>}</div>;
   return <div className="app-shell">
