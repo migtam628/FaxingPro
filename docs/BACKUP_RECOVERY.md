@@ -123,3 +123,9 @@ sudo systemctl disable --now faxingpro-backup.timer
 - Rehearse a complete restoration to an isolated staging instance (DB and document volume).
 - Add MFA, per-user roles, login rate limits and security auditing before using the app for regulated/sensitive documents.
 
+
+## Selected offsite destination: Google Drive
+
+FaxingPro now supports optional Google Drive uploads of **age-encrypted** local backup archives, with a separate root-owned OAuth configuration, a checksum comparison after transfer, per-snapshot verification records, and an automated systemd post-backup hook. **Use [GOOGLE_DRIVE_BACKUPS.md](GOOGLE_DRIVE_BACKUPS.md)** for the exact headless OAuth, secure credential handling, and deployment instructions.
+
+Offsite verification does not constitute an isolated full restoration test. Automatic local or Drive retention/deletion is still disabled.

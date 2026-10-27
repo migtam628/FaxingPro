@@ -49,12 +49,12 @@ Self-hosted fax management for Windows, macOS, Linux and the web, with live Teln
 | Persistent operator session | ✅ Live | 7-day HttpOnly Secure cookie, server-side revocation |
 | Fax document encryption | ✅ Live | AES-256-GCM encrypted files in an isolated persistent Docker volume |
 | In-app fax PDF viewer | ✅ Live | Authenticated blob-based multi-page PDF preview, native browser controls, download and print |
-| Backup & Recovery Center | ✅ Pilot | Read-only local backup freshness; opt-in daily systemd backup timer; offsite replication, restore drills and retention are not yet configured |
+| Backup & Recovery Center | ✅ Pilot | Local backup freshness, encrypted Google Drive upload verification, daily systemd backup timer; restore drills and retention remain operator tasks |
 | Contacts and read/unread | ⏳ Planned | Empty, clearly labeled states; no fake contacts |
 | Historical trend reports | ⏳ Planned | Actual aggregate counts exist, but trend charts are not yet implemented |
 | Multiple users, MFA, compliance controls | ⏳ Not production ready | Single-operator pilot; not suitable for regulated/PHI documents |
 
-For deploying the fax service, read the [**Telnyx VPS deployment guide**](docs/TELNYX_API_DEPLOYMENT.md). To create secure recovery archives, follow the [**v0.4 Backup & Recovery runbook**](docs/BACKUP_RECOVERY.md) before handling sensitive documents.
+For deploying the fax service, read the [**Telnyx VPS deployment guide**](docs/TELNYX_API_DEPLOYMENT.md). To create secure recovery archives, follow the [**Backup & Recovery runbook**](docs/BACKUP_RECOVERY.md). For the selected offsite destination, follow the [**Google Drive Setup Guide**](docs/GOOGLE_DRIVE_BACKUPS.md).
 On an existing installation, **your real fax records are preserved**. The wizard appears
 once after this update and will not appear again after you finish it, unless the server
 configuration is reset. API tokens and Telnyx credentials remain in the VPS `.env` file.
