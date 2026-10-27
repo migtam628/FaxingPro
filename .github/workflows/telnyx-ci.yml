@@ -34,6 +34,7 @@ jobs:
         run: |
           bash -n scripts/faxingpro-backup.sh
           bash -n scripts/faxingpro-verify-backup.sh
+          bash -n scripts/install-faxingpro-backup-timer.sh
       - name: Validate Node module syntax
         run: |
           node --check server/telnyx.mjs
@@ -44,6 +45,14 @@ jobs:
         run: node tests/prepare-telnyx-ci.mjs
       - name: Validate isolated Docker Compose configuration
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env config --quiet
+      - name: Verify scheduled backup preflight without installing systemd services
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          age-keygen -o "$RUNNER_TEMP/timer-identity.txt"
+          recipient="$(age-keygen -y "$RUNNER_TEMP/timer-identity.txt")"
+          FAXINGPRO_AGE_RECIPIENT="$recipient" bash scripts/install-faxingpro-backup-timer.sh --check
+          test ! -f /etc/systemd/system/faxingpro-backup.timer
       - name: Build FaxingPro Telnyx API container
         run: docker build -f server/telnyx.Dockerfile -t faxingpro-telnyx-api:ci .
       - name: Start isolated pilot stack with sending disabled
@@ -67,6 +76,7 @@ jobs:
             awk '/^STORAGE_ENCRYPTION_KEY=/{found=1} END{exit !found}'
           count="$(docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env exec -T db psql -U faxingpro -d faxingpro -tAc 'SELECT count(*) FROM backup_runs')"
           test "$count" -eq 1
+          node tests/telnyx-backup-monitor.mjs
       - name: Shutdown test stack
         if: always()
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env down || true
