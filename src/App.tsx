@@ -7,7 +7,7 @@ import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, 
   Trash2, UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
   type LucideIcon } from 'lucide-react';
 import SetupWizard from './SetupWizard';
-import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, downloadFax, submitFax, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus } from './api';
+import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, getSecurityStatus, revokeAllSessions, downloadFax, submitFax, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus, type SecurityStatus } from './api';
 import type { Fax, FaxStatus, Page } from './types';
 
 const sections: {group:string;items:{page:Page;label:string;icon:LucideIcon}[]}[] = [
@@ -50,6 +50,8 @@ export default function App(){
   const [viewerError,setViewerError]=useState('');
   const [backupStatus,setBackupStatus]=useState<BackupStatus|null>(null);
   const [backupError,setBackupError]=useState('');
+  const [securityStatus,setSecurityStatus]=useState<SecurityStatus|null>(null);
+  const [securityError,setSecurityError]=useState('');
   const [boot,setBoot]=useState<'checking'|'signin'|'setup'|'ready'>('checking');
   const [setupInfo,setSetupInfo]=useState<SetupState|null>(null);
   const [setupError,setSetupError]=useState('');
@@ -137,6 +139,28 @@ export default function App(){
       .catch(e=>{if(!cancelled)setBackupError(e instanceof Error?e.message:'Unable to load backup history');});
     return ()=>{cancelled=true;};
   },[page,boot,apiEndpoint]);
+  useEffect(()=>{
+    if(page!=='security'||boot!=='ready')return;
+    let cancelled=false;
+    getSecurityStatus(apiEndpoint).then(data=>{
+      if(!cancelled){setSecurityStatus(data);setSecurityError('');}
+    }).catch(error=>{
+      if(!cancelled)setSecurityError(error instanceof Error?error.message:'Unable to load security status');
+    });
+    return ()=>{cancelled=true;};
+  },[page,boot,apiEndpoint]);
+  async function refreshSecurity(){
+    try{setSecurityStatus(await getSecurityStatus(apiEndpoint));setSecurityError('');}
+    catch(error){setSecurityError(error instanceof Error?error.message:'Unable to refresh security status');}
+  }
+  async function signOutEverywhere(){
+    if(!window.confirm('Revoke every active FaxingPro session, including this browser? You will need the API_TOKEN to sign in again.'))return;
+    try{
+      await revokeAllSessions(apiEndpoint);
+      setBoot('signin');setApiToken('');setHealth(null);setLiveFaxes(null);
+      setStats(null);setSecurityStatus(null);setSecurityError('');
+    }catch(error){setSecurityError(error instanceof Error?error.message:'Session revocation failed');}
+  }
   async function refreshBackups(){
     try{setBackupStatus(await getBackupStatus(apiEndpoint));setBackupError('');}
     catch(e){setBackupError(e instanceof Error?e.message:'Unable to refresh backups');}
@@ -363,7 +387,31 @@ export default function App(){
               <a className="btn secondary" href="https://github.com/migtam628/FaxingPro/blob/main/docs/BACKUP_RECOVERY.md" target="_blank" rel="noopener noreferrer">Backup & recovery guide <ArrowUpRight size={15}/></a>
             </div>
           </Panel>}
-          {page==='security'&&<Panel title="Security posture"><div className="settings-card"><ShieldCheck size={22}/><div><strong>API token</strong><p>Server calls require an operator-generated secret.</p></div></div><div className="settings-card"><LockKeyhole size={22}/><div><strong>HTTPS</strong><p>Use a trusted reverse proxy; never expose the API token over HTTP.</p></div></div><div className="settings-card"><Archive size={22}/><div><strong>Encrypted storage & roles</strong><p>The Telnyx pilot encrypts PDF volumes with AES-256-GCM. Multi-user roles, MFA, retention and key rotation remain production requirements.</p></div></div></Panel>}
+          {page==='security'&&<Panel title="Security & Sessions">
+            <div className="settings-card"><ShieldCheck size={22}/><div><strong>Single-operator authentication</strong>
+              <p>API_TOKEN exchange, secure HttpOnly session cookies and persistent invalid-login throttling (8 invalid attempts per 15 minutes). Valid operator credentials remain accepted during an attack.</p></div>
+              <span className="status status-received">Enabled</span></div>
+            <div className="settings-card"><LockKeyhole size={22}/><div><strong>Active operator sessions</strong>
+              <p>{securityStatus?securityStatus.activeSessions+' active browser session(s)':'Loading session status...'}</p></div>
+              <span className="status status-queued">7-day maximum</span></div>
+            <div className="settings-card"><AlertTriangle size={22}/><div><strong>Invalid operator logins in last 24 hours</strong>
+              <p>{securityStatus?String(securityStatus.failedLogins24h):'Loading audit data...'}</p></div></div>
+            <div className="settings-card"><Archive size={22}/><div><strong>Additional security still required</strong>
+              <p>MFA, per-user roles, automated abuse monitoring and formal data-retention controls remain future work. Don't treat this as a multi-user or regulated-data-ready release.</p></div></div>
+            <div className="backup-history"><h3>Recent operator security events</h3>
+              {securityStatus?.events.length?securityStatus.events.map((event,index)=>
+                <div className="backup-record" key={index}>
+                  <ShieldCheck size={17}/>
+                  <strong>{event.type.replaceAll('_',' ')}</strong>
+                  <span>{new Date(event.createdAt).toLocaleString()}</span>
+                </div>):<Empty label="No security events recorded yet."/>}
+            </div>
+            {securityError&&<div className="transport-warning"><AlertTriangle size={18}/>{securityError}</div>}
+            <div className="backup-actions">
+              <button className="btn secondary" onClick={()=>void refreshSecurity()}><RefreshCw size={16}/> Refresh security</button>
+              <button className="btn secondary" onClick={()=>void signOutEverywhere()}><LockKeyhole size={16}/> Sign out all sessions</button>
+            </div>
+          </Panel>
         </div></div>
       </>}
       <footer className="app-footer"><span>FaxingPro · ATLAS v0.4 · Live backend</span><span><span className="footer-dot"/> {health?.faxEnabled?'Telnyx outbound pilot enabled':'Outbound sending locked'}</span></footer>

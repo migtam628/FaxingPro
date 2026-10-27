@@ -3,6 +3,17 @@ export type ServerFax = {id:string;direction:'inbound'|'outbound';status:string;
   title:string;filename?:string;pages:number;createdAt:string;failureReason?:string;hasDocument:boolean};
 export type FaxStats = {received:number;sent:number;pending:number;failed:number};
 export type OperatorSession = {authenticated:boolean;expiresAt:string|null};
+export type SecurityStatus = {
+  activeSessions:number;failedLogins24h:number;
+  events:{type:string;createdAt:string}[];
+  mode:'single-operator';mfaEnabled:false;
+};
+export function getSecurityStatus(endpoint:string):Promise<SecurityStatus>{
+  return apiCall<SecurityStatus>(endpoint,'','/api/security');
+}
+export function revokeAllSessions(endpoint:string):Promise<{revoked:number}>{
+  return apiCall<{revoked:number}>(endpoint,'','/api/sessions',{method:'DELETE'});
+}
 export type BackupStatus = {
   configured:boolean;message:string;runs:{name:string;completed_at:string;drive_verified_at:string|null}[];
   lastSuccessfulAt:string|null;ageHours:number|null;freshness:'recent'|'stale'|'missing';
