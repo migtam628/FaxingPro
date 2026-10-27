@@ -140,6 +140,10 @@ const setup=async()=>{
     "notes TEXT NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"+
     "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())");
   await db.query("CREATE INDEX IF NOT EXISTS contacts_name_idx ON contacts(lower(name))");
+  await db.query("CREATE TABLE IF NOT EXISTS notification_preferences ("+
+    "id INTEGER PRIMARY KEY CHECK(id=1),browser_enabled BOOLEAN NOT NULL DEFAULT FALSE,"+
+    "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await db.query("INSERT INTO notification_preferences(id) VALUES(1) ON CONFLICT(id) DO NOTHING");
   await db.query("CREATE TABLE IF NOT EXISTS operator_sessions ("+
     "token_hash TEXT PRIMARY KEY,token_fingerprint TEXT NOT NULL,"+
     "expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ DEFAULT now())");
@@ -377,6 +381,42 @@ const app=http.createServer(async(req,res)=>{
       }
       if(req.method==='GET'&&p==='/api/capabilities')
         return output(res,200,{transport:'telnyx-fax-api',inbound:true,outbound:sending});
+      if(p==='/api/notifications/preferences'){
+        if(req.method==='GET'){
+          const {rows}=await db.query('SELECT browser_enabled FROM notification_preferences WHERE id=1');
+          return output(res,200,{browserEnabled:!!rows[0].browser_enabled});
+        }
+        if(req.method==='PATCH'){
+          if(!(req.headers['content-type']||'').startsWith('application/json'))
+            return output(res,415,{error:'Expected application/json'});
+          let payload;try{payload=JSON.parse((await body(req,2048)).toString());}
+          catch{return output(res,400,{error:'Invalid preference request'});}
+          if(typeof payload?.browserEnabled!=='boolean')
+            return output(res,400,{error:'browserEnabled must be boolean'});
+          await db.query('UPDATE notification_preferences SET browser_enabled=$1,updated_at=now() WHERE id=1',
+            [payload.browserEnabled]);
+          return output(res,200,{browserEnabled:payload.browserEnabled});
+        }
+        return output(res,405,{error:'Method not allowed'},{Allow:'GET, PATCH'});
+      }
+      if(req.method==='GET'&&p==='/api/notifications'){
+        const [records,count]=await Promise.all([
+          db.query("SELECT id,title,direction,status,from_number,to_number,created_at FROM faxes "+
+            "WHERE archived_at IS NULL AND ((direction='inbound' AND read_at IS NULL) "+
+            "OR status='failed') ORDER BY created_at DESC LIMIT 30"),
+          db.query("SELECT count(*)::int AS total FROM faxes WHERE archived_at IS NULL AND "+
+            "((direction='inbound' AND read_at IS NULL) OR status='failed')")
+        ]);
+        const items=records.rows.map(r=>({
+          id:r.id,faxId:r.id,
+          kind:r.status==='failed'?'failed':'incoming',
+          title:r.status==='failed'?'Fax delivery failed':'New incoming fax',
+          description:r.title||'Fax',
+          number:r.direction==='inbound'?r.from_number:r.to_number,
+          createdAt:r.created_at
+        }));
+        return output(res,200,{items,total:count.rows[0].total});
+      }
       if(p==='/api/contacts'){
         if(req.method==='GET'){
           const search=String(url.searchParams.get('q')||'').trim().slice(0,100);
