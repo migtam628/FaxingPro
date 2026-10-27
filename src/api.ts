@@ -91,8 +91,13 @@ export function createSession(endpoint:string,token:string):Promise<OperatorSess
 export function destroySession(endpoint:string):Promise<OperatorSession>{
   return apiCall<OperatorSession>(endpoint,'','/api/session',{method:'DELETE'});
 }
-export async function listFaxes(endpoint:string,token=''):Promise<ServerFax[]>{
-  const result=await apiCall<{items:ServerFax[]}>(endpoint,token,'/api/faxes');
+export async function listFaxes(endpoint:string,token='',options:{folder?:'active'|'archived'|'all';query?:string;offset?:number;limit?:number}={}):Promise<ServerFax[]>{
+  const params=new URLSearchParams();
+  if(options.folder)params.set('folder',options.folder);
+  if(options.query)params.set('q',options.query);
+  if(options.offset)params.set('offset',String(options.offset));
+  params.set('limit',String(options.limit||250));
+  const result=await apiCall<{items:ServerFax[]}>(endpoint,token,'/api/faxes?'+params);
   return result.items;
 }
 export async function getStats(endpoint:string,token=''):Promise<FaxStats>{
