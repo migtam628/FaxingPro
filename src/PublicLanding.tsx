@@ -14,8 +14,8 @@ export default function PublicLanding(){
         <h1>Your fax workspace.<br/><em>In your control.</em></h1>
         <p>ATLAS is a focused fax management interface backed by Telnyx, PostgreSQL, encrypted document storage and a self-hosted API. Keep your documents on infrastructure you control.</p>
         <div className="public-cta">
-          <a className="public-main-button" href={source+'/releases'}>View desktop builds <ArrowRight size={18}/></a>
-          <a className="public-outline-button" href={source+'#readme'}>Read documentation <ExternalLink size={17}/></a>
+          <a className="public-main-button" href={source+'/blob/main/docs/VPS_ONE_CLICK_INSTALL.md'}>Install on a VPS <ArrowRight size={18}/></a>
+          <a className="public-outline-button" href={source+'/releases'}>Download builds <Download size={17}/></a>
         </div>
         <div className="public-proof"><span><CheckCircle2 size={17}/> Real fax records</span><span><CheckCircle2 size={17}/> Encrypted PDFs</span><span><CheckCircle2 size={17}/> No sample transactions</span></div>
       </div>
@@ -45,7 +45,7 @@ export default function PublicLanding(){
         <a className="public-main-button" href={source+'/blob/main/docs/TELNYX_API_DEPLOYMENT.md'} target="_blank" rel="noopener noreferrer">Deployment documentation <ArrowRight size={17}/></a></div>
         <div className="public-arch-list"><div><Server size={21}/> VPS or dedicated server</div><div><ShieldCheck size={21}/> Signed Telnyx webhooks</div><div><Archive size={21}/> PostgreSQL + encrypted PDFs</div><div><Cloud size={21}/> Encrypted offsite recovery</div></div></section>
       <section className="public-bottom"><h2>Explore FaxingPro.</h2><p>Browse the source, preview builds and detailed deployment guide.</p>
-        <div className="public-cta"><a className="public-main-button" href={source+'/releases'}>GitHub Releases <Download size={18}/></a>
+        <div className="public-cta"><a className="public-main-button" href={source+'/blob/main/docs/VPS_ONE_CLICK_INSTALL.md'}>Install on Ubuntu <Download size={18}/></a>
           <a className="public-outline-button" href={source}>Browse the repository <ExternalLink size={17}/></a></div>
         <small>Current release channel: unsigned preview installers. This single-operator pilot is not a certified regulated-document service.</small>
       </section>
