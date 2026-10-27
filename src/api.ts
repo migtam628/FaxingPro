@@ -3,6 +3,15 @@ export type ServerFax = {id:string;direction:'inbound'|'outbound';status:string;
   title:string;filename?:string;pages:number;createdAt:string;failureReason?:string;hasDocument:boolean;
   readAt:string|null;archivedAt:string|null};
 export type FaxStats = {received:number;sent:number;pending:number;failed:number};
+export type DailyActivity = {day:string;received:number;sent:number;failed:number};
+export async function getDailyActivity(endpoint:string):Promise<DailyActivity[]>{
+  return (await apiCall<{days:DailyActivity[]}>(endpoint,'','/api/reports/daily')).days;
+}
+export type FaxEvent = {type:string;occurredAt:string};
+export async function getFaxEvents(endpoint:string,id:string):Promise<FaxEvent[]>{
+  return (await apiCall<{events:FaxEvent[]}>(endpoint,'','/api/faxes/'+encodeURIComponent(id)+'/events')).events;
+}
+
 export type FaxContact = {id:string;name:string;number:string;email:string;company:string;notes:string;createdAt:string;updatedAt:string};
 export type ContactInput = Pick<FaxContact,'name'|'number'|'email'|'company'|'notes'>;
 export async function getContacts(endpoint:string,query=''):Promise<FaxContact[]>{
