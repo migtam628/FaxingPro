@@ -9,7 +9,7 @@ type Props = {
   endpoint:string; token:string; setToken:(value:string)=>void;
   setup:SetupState|null;
   working:boolean; error:string;
-  onConnect:()=>Promise<void>;onReload:()=>Promise<void>;
+  onConnect:()=>Promise<void>;onReload:()=>Promise<void>;onRetry:()=>void;
   onFinish:(name:string,timezone:string)=>Promise<void>;
 };
 const timezones=[
@@ -22,7 +22,7 @@ const timezones=[
 ] as const;
 const steps=['Connect','Check gateway','Workspace'];
 export default function SetupWizard({mode,endpoint,token,setToken,setup,working,error,
-  onConnect,onReload,onFinish}:Props){
+  onConnect,onReload,onRetry,onFinish}:Props){
   const [step,setStep]=useState(0);
   const [workspaceName,setWorkspaceName]=useState<string|null>(null);
   const [timezone,setTimezone]=useState<string|null>(null);
@@ -74,6 +74,8 @@ export default function SetupWizard({mode,endpoint,token,setToken,setup,working,
               {working?'Connecting…':'Connect securely'} <ArrowRight size={17}/></button>
           </form>:<div className="setup-warning"><AlertTriangle size={19}/><span>This static client has no backend on its current origin. Open your self-hosted FaxingPro HTTPS website to complete setup. The GitHub Pages site never accepts operator credentials.</span></div>}
           <p className="setup-hint">The operator token is <code>API_TOKEN</code>, not your Telnyx API key.</p>
+          {error&&<button className="btn secondary" type="button" onClick={onRetry} disabled={working}>
+            <RefreshCw size={16}/> Retry server check</button>}
         </div>}
         {mode==='setup'&&step===0&&<div className="setup-stage">
           <div className="setup-icon"><Server size={27}/></div>

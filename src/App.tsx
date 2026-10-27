@@ -46,6 +46,7 @@ export default function App(){
   const [boot,setBoot]=useState<'checking'|'signin'|'setup'|'ready'>('checking');
   const [setupInfo,setSetupInfo]=useState<SetupState|null>(null);
   const [setupError,setSetupError]=useState('');
+  const [bootRetry,setBootRetry]=useState(0);
   const [filter,setFilter]=useState('');
   const [toast,setToast]=useState('');
   const [recipient,setRecipient]=useState('');
@@ -91,11 +92,20 @@ export default function App(){
       if(cancelled)return;
       setSetupInfo(details);setHealth(status);setLiveFaxes(items.map(serverToFax));setStats(counters);
       setBoot(details.complete?'ready':'setup');
-    })().catch(()=>{
-      if(!cancelled){setBoot('signin');setSetupError('Cannot restore your session. Check that the FaxingPro API is running.');}
+    })().catch(error=>{
+      if(cancelled)return;
+      setBoot('signin');
+      const reason=error instanceof Error?error.message:'Unknown connection error';
+      if(reason.includes('HTTP 404')){
+        setSetupError('The FaxingPro API is outdated or its setup endpoint is missing (HTTP 404). Rebuild both API and web containers on the VPS.');
+      }else if(reason.includes('HTTP 502')||reason.includes('HTTP 503')){
+        setSetupError('The FaxingPro API cannot be reached through Nginx (HTTP 502/503). Check the API container logs on your VPS.');
+      }else{
+        setSetupError('Server check failed: '+reason+'. Check the API container and try again.');
+      }
     });
     return ()=>{cancelled=true;};
-  },[]);
+  },[bootRetry]);
   useEffect(()=>{if(!toast)return;const timer=window.setTimeout(()=>setToast(''),4500);return ()=>clearTimeout(timer);},[toast]);
   useEffect(()=>{if(!file){setFileUrl(null);return;}const url=URL.createObjectURL(file);setFileUrl(url);return ()=>URL.revokeObjectURL(url);},[file]);
   async function refreshLive(endpoint=apiEndpoint,token=apiToken){
@@ -181,7 +191,9 @@ export default function App(){
   if(boot!=='ready'){
     return <SetupWizard mode={boot} endpoint={apiEndpoint}
       token={apiToken} setToken={setApiToken} setup={setupInfo} working={testing}
-      error={setupError} onConnect={testConnection} onReload={recheckSetup} onFinish={finishSetup}/>;
+      error={setupError} onConnect={testConnection} onReload={recheckSetup}
+      onRetry={()=>{setBoot('checking');setSetupError('');setBootRetry(n=>n+1);}}
+      onFinish={finishSetup}/>;
   }
   const table = (items:Fax[],showCheckbox=true)=><div className="table-scroll"><table className="fax-table"><thead><tr>{showCheckbox&&<th className="check-col"><input aria-label="Select all" type="checkbox" disabled/></th>}<th>Document / Contact</th><th>Fax number</th><th>Status</th><th>Pages</th><th>Date</th><th></th></tr></thead><tbody>{items.map(f=><tr key={f.id} onClick={()=>openFax(f)} className="click-row">{showCheckbox&&<td onClick={e=>e.stopPropagation()}><input type="checkbox" aria-label={'Select '+f.id} disabled/></td>}<td><div className="file-cell"><span className="pdf-icon"><FileText size={16}/></span><span><strong>{f.title}</strong><small>{f.contact}</small></span>{f.unread&&<span className="new-dot"/>}</div></td><td>{f.number}</td><td><Status value={f.status}/></td><td>{f.pages}</td><td>{f.createdAt}</td><td><ChevronRight size={17}/></td></tr>)}</tbody></table>{items.length===0&&<Empty label="Try a different search or folder."/>}</div>;
   return <div className="app-shell">
