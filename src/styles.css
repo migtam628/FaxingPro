@@ -104,3 +104,11 @@
 .contact-alert,.contact-notice{margin:12px 24px;padding:12px;border-radius:8px;background:#fff2f2;color:#a53f3f;font-size:12px}
 .contact-notice{background:#e5f6f0;color:#087d6d}
 @media(max-width:650px){.contact-form{grid-template-columns:1fr}.contact-wide{grid-column:auto}}
+
+/* v0.7 — live daily reporting */
+.report-bars{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:10px;align-items:end;min-height:240px;padding:24px 24px 10px;overflow-x:auto}
+.report-day{display:grid;justify-items:center;gap:9px;min-width:26px;color:#577083}
+.report-day strong{font-size:11px;color:#2b4c64}.report-day small{font-size:10px;white-space:nowrap}
+.report-bar-track{width:100%;height:170px;border-radius:6px;background:#edf5f5;display:flex;align-items:end;overflow:hidden}
+.report-bar-track span{display:block;width:100%;background:linear-gradient(0deg,#0b9187,#6ac9b6);border-radius:5px 5px 0 0}
+@media(max-width:800px){.report-bars{gap:5px}.report-bar-track{height:130px}.report-day small{font-size:8px}}
