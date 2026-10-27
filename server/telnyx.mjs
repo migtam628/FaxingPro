@@ -274,9 +274,16 @@ const app=http.createServer(async(req,res)=>{
       if(p==='/api/setup')return await setupSettings(req,res);
       if(req.method==='GET'&&p==='/api/backup/status'){
         const {rows}=await db.query('SELECT name,completed_at FROM backup_runs ORDER BY completed_at DESC LIMIT 5');
+        const last=rows[0]?.completed_at||null;
+        const ageHours=last?Math.round(((Date.now()-new Date(last).getTime())/3600000)*10)/10:null;
+        const freshness=last?(ageHours<=36?'recent':'stale'):'missing';
         return output(res,200,{runs:rows,configured:rows.length>0,
-          message:rows.length?'Encrypted backups recorded by the VPS backup job. Verify offsite copies separately.':
-            'No encrypted backup has been recorded. Configure the VPS backup job before using real business documents.'});
+          lastSuccessfulAt:last,ageHours,freshness,
+          // A recorded timestamp proves only local archive creation, not scheduled runs/offsite recovery.
+          scheduleVerified:false,offsiteVerified:false,
+          message:freshness==='recent'?'Recent encrypted local archive creation recorded. Verify offsite copies separately.':
+            freshness==='stale'?'Most recent local backup record is over 36 hours old. Check the VPS timer and journald.':
+            'No encrypted local backup has been recorded. Run the VPS backup script first.'});
       }
       if(req.method==='GET'&&p==='/api/capabilities')
         return output(res,200,{transport:'telnyx-fax-api',inbound:true,outbound:sending});
