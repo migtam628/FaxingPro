@@ -3,6 +3,22 @@ export type ServerFax = {id:string;direction:'inbound'|'outbound';status:string;
   title:string;filename?:string;pages:number;createdAt:string;failureReason?:string;hasDocument:boolean};
 export type FaxStats = {received:number;sent:number;pending:number;failed:number};
 export type OperatorSession = {authenticated:boolean;expiresAt:string|null};
+export type SetupState = {
+  complete:boolean; workspaceName:string; timezone:string; provider:string;
+  fromNumber:string|null; publicBaseUrl:string|null; webhookUrl:string|null;
+  outboundEnabled:boolean;
+  configured:{apiKey:boolean;faxApplication:boolean;phoneNumber:boolean;webhookPublicKey:boolean;httpsUrl:boolean};
+};
+export function getSetup(endpoint:string):Promise<SetupState>{
+  return apiCall<SetupState>(endpoint,'','/api/setup');
+}
+export function completeSetup(endpoint:string,workspaceName:string,timezone:string):Promise<SetupState>{
+  return apiCall<SetupState>(endpoint,'','/api/setup',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({workspaceName,timezone})
+  });
+}
+
 const withSlash=(endpoint:string)=>endpoint.trim().replace(/\/$/,'');
 const headersFor=(token:string,extra?:HeadersInit):Headers=>{
   const h=new Headers(extra);
