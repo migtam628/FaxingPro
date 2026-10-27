@@ -8,7 +8,7 @@
 
 [**Public product website**](https://migtam628.github.io/FaxingPro/) · [**Desktop releases**](https://github.com/migtam628/FaxingPro/releases) · [**Telnyx deployment**](docs/TELNYX_API_DEPLOYMENT.md) · [**Google Drive backup guide**](docs/GOOGLE_DRIVE_BACKUPS.md)
 
-> **Development status — ATLAS v0.7.** The API and ATLAS interface work with genuine stored fax records; there is **no demo dataset** in the live application. Real fax transmission requires your own running Telnyx account and self-hosted HTTPS VPS. This is still a **single-operator pilot**, not a multi-tenant or regulated-document-certified product. See [known limitations](#known-limitations).
+> **Development status — ATLAS v0.8 (in progress).** The API and ATLAS interface work with genuine stored fax records; there is **no demo dataset** in the live application. Real fax transmission requires your own running Telnyx account and self-hosted HTTPS VPS. This is still a **single-operator pilot**, not a multi-tenant or regulated-document-certified product. See [known limitations](#known-limitations).
 
 ![ATLAS visual concept](docs/images/atlas-dashboard.svg)
 
@@ -28,6 +28,7 @@
 | Read/unread and archive | Implemented in v0.6 | Database-backed inbound read state and reversible fax archive |
 | Webhook event timelines | Implemented in v0.7 | Recorded Telnyx webhook event timestamps per fax; no synthetic event history |
 | 30-day daily report | Implemented in v0.7 | UTC daily incoming/outgoing/failed counts from PostgreSQL with recent-activity visualization |
+| Fax notification center | Implemented in v0.8 | Real unread inbound and failed transmission alerts, 60-second polling, opt-in browser notifications, stored preferences |
 | Sessions and security history | Implemented | Seven-day secure cookie, failed-login throttling, session counts, revoke-all and operator audit |
 | Encrypted local backups | Implemented | Streamed PostgreSQL, fax-volume and env archives encrypted to off-VPS age recipient |
 | Google Drive backup integration | Implemented | rclone uploader, checksum comparison, offsite status and scheduled post-backup hook |
@@ -43,6 +44,8 @@ ATLAS provides Dashboard, Inbox, Sent Faxes, New Fax, Contacts, Documents, Archi
 **Inbox:** New inbound records start unread. Opening the original fax marks it read. You can mark it unread again, archive it without deleting PDFs, restore it, or search by title, fax number, and transmission ID. API history searches return at most 250 rows per request; server pagination is available for extensions.
 
 **Documents:** Original encrypted PDFs are decrypted by the authenticated API only when requested; the web app uses an ephemeral object URL for preview. Documents are not served directly from the host filesystem.
+
+**Notifications:** The bell in ATLAS displays actual unread incoming faxes and failed transmissions. The operator can open the corresponding fax, refresh alerts, and opt into desktop notifications with browser permission. FaxingPro polls every 60 seconds; this is **not instantaneous server push**. No third-party notification services or fake activity feed are used.
 
 **Security:** A single operator signs in using `API_TOKEN` in a same-origin HTTPS session; invalid-token submissions are throttled and security events are recorded in PostgreSQL. Neither the bearer key nor the Google Drive private tokens should be committed to source control.
 
@@ -142,7 +145,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 - Currently **single-operator**. MFA, separate user accounts and per-role authorization are not implemented.
 - Outbound faxing is constrained to the configured test destination until a dedicated sender-safety rollout is approved.
 - Contact changes are not automatically synchronized with Telnyx or external CRMs.
-- Historical reports beyond aggregate counters, notifications, retention policies and controlled sending retries still need implementation.
+- Reporting includes 30-day daily activity but lacks full usage/cost analytics; email/SMS alerts, retention policies and controlled sending retries still need implementation.
 - The public website and desktop installers are not themselves a fax service. The HTTPS VPS and Telnyx backend must be available.
 - Document viewer and encrypted cloud backup are functional, but **independent restoration and security audits** remain outstanding before using this for regulated workflows.
 
