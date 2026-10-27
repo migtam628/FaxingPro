@@ -9,7 +9,7 @@ import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, 
 import SetupWizard from './SetupWizard';
 import ContactsManager from './ContactsManager';
 import PublicLanding from './PublicLanding';
-import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, getSecurityStatus, revokeAllSessions, setFaxFlag, downloadFax, submitFax, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus, type SecurityStatus } from './api';
+import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, getSecurityStatus, revokeAllSessions, setFaxFlag, getFaxEvents, getDailyActivity, downloadFax, submitFax, type DailyActivity, type FaxEvent, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus, type SecurityStatus } from './api';
 import type { Fax, FaxStatus, Page } from './types';
 
 const sections: {group:string;items:{page:Page;label:string;icon:LucideIcon}[]}[] = [
@@ -49,6 +49,10 @@ export default function App(){
   const [mobileNav,setMobileNav]=useState(false);
   const [activeFax,setActiveFax]=useState<Fax|null>(null);
   const [archivedFaxes,setArchivedFaxes]=useState<Fax[]>([]);
+  const [faxEvents,setFaxEvents]=useState<FaxEvent[]>([]);
+  const [faxEventsError,setFaxEventsError]=useState('');
+  const [reportDays,setReportDays]=useState<DailyActivity[]>([]);
+  const [reportError,setReportError]=useState('');
   const [unreadOnly,setUnreadOnly]=useState(false);
   const viewerFrame=useRef<HTMLIFrameElement|null>(null);
   const [viewerUrl,setViewerUrl]=useState<string|null>(null);
@@ -144,6 +148,23 @@ export default function App(){
     let cancelled=false;
     getBackupStatus(apiEndpoint).then(v=>{if(!cancelled){setBackupStatus(v);setBackupError('');}})
       .catch(e=>{if(!cancelled)setBackupError(e instanceof Error?e.message:'Unable to load backup history');});
+    return ()=>{cancelled=true;};
+  },[page,boot,apiEndpoint]);
+  useEffect(()=>{
+    if(page!=='viewer'||!activeFax?.id||boot!=='ready')return;
+    let cancelled=false;
+    setFaxEvents([]);setFaxEventsError('');
+    getFaxEvents(apiEndpoint,activeFax.id).then(events=>{
+      if(!cancelled)setFaxEvents(events);
+    }).catch(e=>{if(!cancelled)setFaxEventsError(e instanceof Error?e.message:'Event history unavailable');});
+    return ()=>{cancelled=true;};
+  },[page,activeFax?.id,boot,apiEndpoint]);
+  useEffect(()=>{
+    if(page!=='reports'||boot!=='ready')return;
+    let cancelled=false;
+    getDailyActivity(apiEndpoint).then(days=>{
+      if(!cancelled){setReportDays(days);setReportError('');}
+    }).catch(e=>{if(!cancelled)setReportError(e instanceof Error?e.message:'Daily reporting unavailable');});
     return ()=>{cancelled=true;};
   },[page,boot,apiEndpoint]);
   useEffect(()=>{
@@ -380,7 +401,12 @@ export default function App(){
               {activeFax.hasDocument&&<button className="btn secondary" onClick={downloadCurrent}><Download size={16}/> Download PDF</button>}
             </div>}
           </div></div>
-          <aside className="viewer-side"><div className="detail-tabs">{['Details','Activity'].map(t=><button key={t} className={viewTab===t?'current':''} onClick={()=>setViewTab(t)}>{t}</button>)}</div>{viewTab==='Details'?<div className="detail-body"><div className="detail-status"><Status value={activeFax.status}/><span>{activeFax.direction==='inbound'?'Incoming fax':'Outgoing fax'}</span></div>{[['Document',activeFax.title],['From / To',activeFax.contact],['Fax number',activeFax.number],['Pages',String(activeFax.pages)],['Received / Created',activeFax.createdAt],['Transmission ID',activeFax.id],['Source','VPS / Telnyx']].map(([k,v])=><div className="detail-row" key={k}><span>{k}</span><strong>{v}</strong></div>)}</div>:<div className="detail-body"><div className="timeline"><span/><div><strong>Received by FaxingPro</strong><small>{activeFax.createdAt}</small></div></div><p className="field-help">Live transmission event history will require server connectivity.</p></div>}<div className="viewer-side-actions"><button onClick={downloadCurrent}><Download size={16}/> Download PDF</button><button onClick={()=>{setRecipient(activeFax.number);navigate('compose');}}><ArrowUpRight size={16}/> Forward as fax</button>{activeFax.direction==='inbound'&&<button onClick={()=>void changeFaxFlag(activeFax,'read',!!activeFax.unread)}><Eye size={16}/>{activeFax.unread?'Mark read':'Mark unread'}</button>}
+          <aside className="viewer-side"><div className="detail-tabs">{['Details','Activity'].map(t=><button key={t} className={viewTab===t?'current':''} onClick={()=>setViewTab(t)}>{t}</button>)}</div>{viewTab==='Details'?<div className="detail-body"><div className="detail-status"><Status value={activeFax.status}/><span>{activeFax.direction==='inbound'?'Incoming fax':'Outgoing fax'}</span></div>{[['Document',activeFax.title],['From / To',activeFax.contact],['Fax number',activeFax.number],['Pages',String(activeFax.pages)],['Received / Created',activeFax.createdAt],['Transmission ID',activeFax.id],['Source','VPS / Telnyx']].map(([k,v])=><div className="detail-row" key={k}><span>{k}</span><strong>{v}</strong></div>)}</div>:<div className="detail-body"><div className="timeline"><span/><div><strong>Created in FaxingPro</strong><small>{activeFax.createdAt}</small></div></div>
+            {faxEvents.map((event,index)=><div className="timeline" key={index}><span/><div>
+              <strong>{event.type.replace(/^fax\./,'').replaceAll('.',' ').replaceAll('_',' ')}</strong>
+              <small>{new Date(event.occurredAt).toLocaleString()}</small></div></div>)}
+            {faxEvents.length===0&&<p className="field-help">No provider webhook events recorded for this fax yet.</p>}
+            {faxEventsError&&<p className="field-help">{faxEventsError}</p>}</div>}<div className="viewer-side-actions"><button onClick={downloadCurrent}><Download size={16}/> Download PDF</button><button onClick={()=>{setRecipient(activeFax.number);navigate('compose');}}><ArrowUpRight size={16}/> Forward as fax</button>{activeFax.direction==='inbound'&&<button onClick={()=>void changeFaxFlag(activeFax,'read',!!activeFax.unread)}><Eye size={16}/>{activeFax.unread?'Mark read':'Mark unread'}</button>}
             <button onClick={()=>void changeFaxFlag(activeFax,'archive',!activeFax.archived)}><Archive size={16}/>{activeFax.archived?'Restore from archive':'Archive without deleting'}</button></div></aside></div>
       </>}
       {page==='contacts'&&<ContactsManager endpoint={apiEndpoint} onFax={number=>{setRecipient(number);navigate('compose');}}/>}
@@ -394,6 +420,19 @@ export default function App(){
       </>}
       {page==='reports'&&<><div className="page-heading"><div><span className="eyebrow">INSIGHTS</span><h1>Activity & Reports</h1><p>Live counters from your private FaxingPro database.</p></div></div>
         <div className="kpi-grid">{[['Successful deliveries',String(stats?.sent??0)],['Received faxes',String(stats?.received??0)],['Pending transmissions',String(stats?.pending??0)],['Failed transmissions',String(stats?.failed??0)]].map(([label,value])=><div className="kpi-card" key={label}><span className="eyebrow">{label}</span><div className="kpi-value">{value}</div></div>)}</div>
+        <Panel title="Daily fax activity · last 14 days (UTC)">
+          {reportError&&<div className="transport-warning"><AlertTriangle size={18}/>{reportError}</div>}
+          {reportDays.length>0?<div className="report-bars">
+            {reportDays.slice(-14).map(day=>{
+              const total=day.received+day.sent;
+              const max=Math.max(1,...reportDays.slice(-14).map(d=>d.received+d.sent));
+              return <div className="report-day" key={day.day} title={day.day+': '+day.received+' received, '+day.sent+' sent, '+day.failed+' failed'}>
+                <div className="report-bar-track"><span style={{height:Math.max(3,total/max*100)+'%'}}/></div>
+                <small>{day.day.slice(5)}</small><strong>{total}</strong>
+              </div>;
+            })}</div>:<Empty label="No daily transmission data has been loaded yet."/>}
+          <p className="field-help">Counts are based on original record creation date, not confirmation date. Times shown in UTC; incoming and outgoing fax records only.</p>
+        </Panel>
         <Panel title="Recent transmissions">{table(faxes.slice(0,10),false)}</Panel></>}
       {page==='team'&&<><div className="page-heading"><div><span className="eyebrow">ACCESS MANAGEMENT</span><h1>Team Members</h1><p>Manage team roles and workspace permissions.</p></div><button className="btn primary" onClick={()=>setToast('Team invitations are not yet available. This installation uses a single operator.')}><Users size={16}/> Invite member</button></div><Panel title="Workspace access"><div className="settings-card"><Users size={22}/><div><strong>Local operator</strong><p>Administrator · Secure session</p></div><span className="status status-received">Active</span></div></Panel></>}
       {(page==='settings'||page==='server'||page==='sip'||page==='security'||page==='backups')&&<>
@@ -466,7 +505,7 @@ export default function App(){
           </Panel>}
         </div></div>
       </>}
-      <footer className="app-footer"><span>FaxingPro · ATLAS v0.6 · Live backend</span><span><span className="footer-dot"/> {health?.faxEnabled?'Telnyx outbound pilot enabled':'Outbound sending locked'}</span></footer>
+      <footer className="app-footer"><span>FaxingPro · ATLAS v0.7 · Live backend</span><span><span className="footer-dot"/> {health?.faxEnabled?'Telnyx outbound pilot enabled':'Outbound sending locked'}</span></footer>
       </main>
     </div>
     {toast&&<div className="toast"><span>{toast}</span><button aria-label="Dismiss notification" onClick={()=>setToast('')}><X size={17}/></button></div>}
