@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import './notifications.css';
 import {Bell,RefreshCw,ShieldCheck,AlertTriangle,FileText,Settings2,X} from 'lucide-react';
 import {getNotifications,getNotificationPreferences,setNotificationPreferences,
-  type FaxNotification,type FaxNotificationFeed} from './api';
+  type FaxNotificationFeed} from './api';
 
 export default function NotificationCenter({endpoint,onOpen}:{endpoint:string;onOpen:(faxId:string)=>void}){
   const [open,setOpen]=useState(false);
