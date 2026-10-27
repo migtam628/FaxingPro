@@ -1,0 +1,5 @@
+# Public hostname comes from .env via the Caddy container environment.
+{$FAXINGPRO_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy web:80
+}
