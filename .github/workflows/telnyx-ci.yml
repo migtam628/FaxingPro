@@ -15,6 +15,10 @@ on:
       - 'tests/prepare-telnyx-ci.mjs'
       - 'src/api.ts'
       - 'src/App.tsx'
+      - 'src/ContactsManager.tsx'
+      - 'src/NotificationCenter.tsx'
+      - 'src/PublicLanding.tsx'
+      - 'src/notifications.css'
       - '.github/workflows/telnyx-ci.yml'
   pull_request:
     branches: [main]
