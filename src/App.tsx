@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Bell,
-  BookUser, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
+  BookUser, CheckCircle2, ChevronLeft, ChevronRight,
   CircleHelp, Clock3, Cloud, Download, FilePlus2, FileText, Filter, FolderOpen,
   HardDrive, Inbox, LayoutDashboard, LifeBuoy, LockKeyhole, Menu, MoreHorizontal,
   Phone, Plus, Printer, Search, Send, Server, Settings2, ShieldCheck,
@@ -179,7 +179,7 @@ export default function App(){
     setFile(value||null);
   }
   if(boot!=='ready'){
-    return <SetupWizard mode={boot==='ready'?'checking':boot} endpoint={apiEndpoint}
+    return <SetupWizard mode={boot} endpoint={apiEndpoint}
       token={apiToken} setToken={setApiToken} setup={setupInfo} working={testing}
       error={setupError} onConnect={testConnection} onReload={recheckSetup} onFinish={finishSetup}/>;
   }
