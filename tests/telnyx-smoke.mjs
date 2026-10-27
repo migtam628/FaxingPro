@@ -92,8 +92,42 @@ assert.equal(logout.status,200);
 assert.equal((await (await request('/api/session',{headers:cookieHeader})).json()).authenticated,false,
   'Revoked session must not be reusable');
 assert.equal((await request('/api/faxes',{headers:cookieHeader})).status,401);
+assert.equal((await request('/api/security')).status,401);
+const securityBefore=await request('/api/security',{headers:auth});
+assert.equal(securityBefore.status,200);
+assert.equal((await securityBefore.json()).mode,'single-operator');
+assert.equal((await request('/api/sessions',{method:'DELETE'})).status,401);
+
+// Eight failed attempts inside the rolling 15-minute window trigger a shared throttle.
+// The real operator token must still work even if an attacker floods bad attempts.
+for(let i=1;i<=9;i++){
+  const response=await request('/api/session',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({token:'definitely-wrong-'+i})
+  });
+  assert.equal(response.status,i>=8?429:401);
+  if(i>=8)assert.equal(response.headers.get('retry-after'),'900');
+}
+const audit=await (await request('/api/security',{headers:auth})).json();
+assert.ok(audit.failedLogins24h>=8,'Failed logins recorded in operator audit');
+assert.ok(audit.events.some(event=>event.type==='login_failure'));
+const validDespiteThrottle=await request('/api/session',{
+  method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({token:env.API_TOKEN})
+});
+assert.equal(validDespiteThrottle.status,200,'Real operator remains able to login under throttle');
+const secondCookie=validDespiteThrottle.headers.get('set-cookie')?.split(';')[0];
+assert.ok(secondCookie?.startsWith('__Host-faxingpro_session='));
+const securityAfterLogin=await (await request('/api/security',{headers:auth})).json();
+assert.ok(securityAfterLogin.activeSessions>=1);
+const revokeAll=await request('/api/sessions',{method:'DELETE',headers:auth});
+assert.equal(revokeAll.status,200);
+assert.ok((await revokeAll.json()).revoked>=1);
+assert.equal((await (await request('/api/session',{headers:{Cookie:secondCookie}})).json()).authenticated,false);
+assert.equal((await request('/api/faxes',{headers:{Cookie:secondCookie}})).status,401);
+assert.equal((await request('/api/faxes',{headers:auth})).status,200,'Script bearer-token still functions');
 const bad=await request('/webhooks/telnyx',{method:'POST',headers:{'Content-Type':'application/json'},body:raw});
 assert.equal(bad.status,401);
 const send=await request('/api/faxes',{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:'{}'});
 assert.equal(send.status,503,'Outbound must remain locked');
-console.log('PASS: secure backup status, health, first-run setup, operator login, signed webhooks, database persistence, outbound lock');
+console.log('PASS: backups, security audit, login throttling, revoke-all sessions, health, Telnyx signed webhooks, database persistence and outbound restrictions');
