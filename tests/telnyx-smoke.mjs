@@ -110,6 +110,18 @@ assert.equal((await update.json()).name,'Updated Technician');
 assert.ok((await (await request('/api/contacts?q=Updated',{headers:auth})).json())
   .items.some(c=>c.id===contact.id));
 const faxRecord=fromCookie.items.find(f=>f.telnyxId===faxId);
+assert.equal((await request('/api/reports/daily')).status,401);
+const daily=await request('/api/reports/daily',{headers:auth});
+assert.equal(daily.status,200);
+const dailyReport=await daily.json();
+assert.equal(dailyReport.days.length,30);
+assert.equal(dailyReport.timezone,'UTC');
+assert.ok(dailyReport.days.some(d=>d.received>=1));
+assert.equal((await request('/api/faxes/'+faxRecord.id+'/events')).status,401);
+const timeline=await request('/api/faxes/'+faxRecord.id+'/events',{headers:auth});
+assert.equal(timeline.status,200);
+assert.ok((await timeline.json()).events.some(e=>e.type==='fax.receiving.started'));
+
 assert.equal(faxRecord.readAt,null);
 assert.equal(faxRecord.archivedAt,null);
 assert.equal((await request('/api/faxes/'+faxRecord.id+'/read',{method:'PATCH',
@@ -175,4 +187,4 @@ const bad=await request('/webhooks/telnyx',{method:'POST',headers:{'Content-Type
 assert.equal(bad.status,401);
 const send=await request('/api/faxes',{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:'{}'});
 assert.equal(send.status,503,'Outbound must remain locked');
-console.log('PASS: contacts CRUD, read/unread, reversible archives, search, backups, login throttling, signed webhooks, database persistence and outbound restrictions');
+console.log('PASS: contacts CRUD, read/unread, archive, server-side search, 30-day reporting, signed fax event timeline, backups, login throttling and safety restrictions');
