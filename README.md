@@ -8,7 +8,7 @@
 
 [**Public product website**](https://migtam628.github.io/FaxingPro/) · [**Desktop releases**](https://github.com/migtam628/FaxingPro/releases) · [**Telnyx deployment**](docs/TELNYX_API_DEPLOYMENT.md) · [**Google Drive backup guide**](docs/GOOGLE_DRIVE_BACKUPS.md)
 
-> **Development status — ATLAS v0.6.** The API and ATLAS interface work with genuine stored fax records; there is **no demo dataset** in the live application. Real fax transmission requires your own running Telnyx account and self-hosted HTTPS VPS. This is still a **single-operator pilot**, not a multi-tenant or regulated-document-certified product. See [known limitations](#known-limitations).
+> **Development status — ATLAS v0.7.** The API and ATLAS interface work with genuine stored fax records; there is **no demo dataset** in the live application. Real fax transmission requires your own running Telnyx account and self-hosted HTTPS VPS. This is still a **single-operator pilot**, not a multi-tenant or regulated-document-certified product. See [known limitations](#known-limitations).
 
 ![ATLAS visual concept](docs/images/atlas-dashboard.svg)
 
@@ -26,6 +26,8 @@
 | Encryption at rest | Implemented | AES-256-GCM document encryption in persistent Docker volume |
 | Contacts | Implemented in v0.6 | Private PostgreSQL contact create, edit, search and delete |
 | Read/unread and archive | Implemented in v0.6 | Database-backed inbound read state and reversible fax archive |
+| Webhook event timelines | Implemented in v0.7 | Recorded Telnyx webhook event timestamps per fax; no synthetic event history |
+| 30-day daily report | Implemented in v0.7 | UTC daily incoming/outgoing/failed counts from PostgreSQL with recent-activity visualization |
 | Sessions and security history | Implemented | Seven-day secure cookie, failed-login throttling, session counts, revoke-all and operator audit |
 | Encrypted local backups | Implemented | Streamed PostgreSQL, fax-volume and env archives encrypted to off-VPS age recipient |
 | Google Drive backup integration | Implemented | rclone uploader, checksum comparison, offsite status and scheduled post-backup hook |
@@ -109,6 +111,14 @@ npm run desktop
 The system preserves three independent recovery components: **PostgreSQL database**, **AES-GCM encrypted PDF volume**, and **VPS encryption/configuration secrets**. The [Backup & Recovery runbook](docs/BACKUP_RECOVERY.md) uses an off-VPS `age` private identity to encrypt and validate archives. The optional [Google Drive integration](docs/GOOGLE_DRIVE_BACKUPS.md) uses rclone with your own Google OAuth app to upload encrypted archives, verify checksums and show per-snapshot offsite status.
 
 **Important:** Google Drive verification proves the encrypted bytes matched at upload time; it is **not** an isolated restoration test. The Google Drive OAuth configuration and age private identity must never be committed or exposed in logs, screenshots or tickets. Scheduled backups do not delete old archives automatically; monitor storage growth.
+
+## GitHub release publishing permissions
+
+GitHub Actions builds and stores five preview installers on each release workflow. Creating a **GitHub Release** requires a separate write action, and it can fail with HTTP 403 even when all OS packaging jobs succeed.
+
+The [release workflow](.github/workflows/release.yml) requests `contents: write`. If the repository or account policy prevents the default Actions token from publishing—especially when the target commit modifies workflow files—provide a dedicated repository Actions secret named **FAXINGPRO_RELEASE_TOKEN** with only the permissions required for this repository (Contents: read/write and, when publishing a commit that changes workflows, Workflows: read/write), or adjust the repository policy using an authorized account. Never paste the secret into an issue, commit, or chat.
+
+To change the policy in GitHub, open **Settings → Actions → General → Workflow permissions**. After permission changes, run [Build and Release](https://github.com/migtam628/FaxingPro/actions/workflows/release.yml) again using **Run workflow**. Until a release appears in the Releases list, installers remain accessible as individual **Actions run artifacts** (subject to GitHub's artifact retention).
 
 ## Development and CI
 
