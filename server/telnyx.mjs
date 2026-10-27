@@ -105,7 +105,22 @@ const body=async(req,limit)=>{let len=0;const chunks=[];for await(const c of req
 const row=r=>({id:r.id,telnyxId:r.telnyx_id,direction:r.direction,status:r.status,
   from:r.from_number,to:r.to_number,title:r.title,filename:r.filename,pages:r.pages,
   createdAt:r.created_at,updatedAt:r.updated_at,failureReason:r.failure_reason,
-  hasDocument:!!r.file_name});
+  hasDocument:!!r.file_name,readAt:r.read_at||null,archivedAt:r.archived_at||null});
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const contactNumber=/^\+[1-9]\d{7,14}$/;
+const contactData=v=>{
+  const name=typeof v?.name==='string'?v.name.trim():'';
+  const number=typeof v?.number==='string'?v.number.replace(/[\s().-]/g,''):'';
+  const email=typeof v?.email==='string'?v.email.trim():'';
+  const company=typeof v?.company==='string'?v.company.trim():'';
+  const notes=typeof v?.notes==='string'?v.notes.trim():'';
+  if(name.length<2||name.length>100||!contactNumber.test(number)||
+     email.length>200||(email!==''&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))||
+     company.length>120||notes.length>1000) return null;
+  return {name,number,email,company,notes};
+};
+const contactRow=r=>({id:r.id,name:r.name,number:r.number,email:r.email,
+  company:r.company,notes:r.notes,createdAt:r.created_at,updatedAt:r.updated_at});
 const setup=async()=>{
   await mkdir(dir,{recursive:true,mode:0o700});
   await db.query("CREATE TABLE IF NOT EXISTS faxes ("+
@@ -117,6 +132,14 @@ const setup=async()=>{
   await db.query("CREATE TABLE IF NOT EXISTS webhook_events ("+
     "id TEXT PRIMARY KEY,fax_id TEXT,event_type TEXT,occurred_at TIMESTAMPTZ,received_at TIMESTAMPTZ DEFAULT now())");
   await db.query("CREATE INDEX IF NOT EXISTS faxes_created_at_idx ON faxes(created_at DESC)");
+  await db.query('ALTER TABLE faxes ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ');
+  await db.query('ALTER TABLE faxes ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ');
+  await db.query("CREATE TABLE IF NOT EXISTS contacts ("+
+    "id UUID PRIMARY KEY,name TEXT NOT NULL,number TEXT NOT NULL UNIQUE,"+
+    "email TEXT NOT NULL DEFAULT '',company TEXT NOT NULL DEFAULT '',"+
+    "notes TEXT NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"+
+    "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await db.query("CREATE INDEX IF NOT EXISTS contacts_name_idx ON contacts(lower(name))");
   await db.query("CREATE TABLE IF NOT EXISTS operator_sessions ("+
     "token_hash TEXT PRIMARY KEY,token_fingerprint TEXT NOT NULL,"+
     "expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ DEFAULT now())");
@@ -354,9 +377,85 @@ const app=http.createServer(async(req,res)=>{
       }
       if(req.method==='GET'&&p==='/api/capabilities')
         return output(res,200,{transport:'telnyx-fax-api',inbound:true,outbound:sending});
+      if(p==='/api/contacts'){
+        if(req.method==='GET'){
+          const search=String(url.searchParams.get('q')||'').trim().slice(0,100);
+          const {rows}=await db.query(
+            "SELECT * FROM contacts WHERE ($1='' OR name ILIKE '%'||$1||'%'"+
+            " OR number ILIKE '%'||$1||'%' OR company ILIKE '%'||$1||'%') "+
+            "ORDER BY name ASC,id ASC LIMIT 500",[search]);
+          return output(res,200,{items:rows.map(contactRow)});
+        }
+        if(req.method==='POST'){
+          if(!(req.headers['content-type']||'').startsWith('application/json'))
+            return output(res,415,{error:'Expected application/json'});
+          let payload;try{payload=JSON.parse((await body(req,8192)).toString());}
+          catch{return output(res,400,{error:'Invalid contact request'});}
+          const info=contactData(payload);
+          if(!info)return output(res,400,{error:'Contact requires name (2-100 chars), valid E.164 number, optional email/company/notes'});
+          const exists=await db.query('SELECT id FROM contacts WHERE number=$1',[info.number]);
+          if(exists.rowCount)return output(res,409,{error:'A contact with that fax number already exists'});
+          const {rows}=await db.query(
+            'INSERT INTO contacts(id,name,number,email,company,notes) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+            [randomUUID(),info.name,info.number,info.email,info.company,info.notes]);
+          return output(res,201,contactRow(rows[0]));
+        }
+        return output(res,405,{error:'Method not allowed'},{Allow:'GET, POST'});
+      }
+      const contact=p.match(/^\/api\/contacts\/([0-9a-f-]{36})$/i);
+      if(contact){
+        if(!uuid.test(contact[1]))return output(res,400,{error:'Invalid contact ID'});
+        if(req.method==='DELETE'){
+          const result=await db.query('DELETE FROM contacts WHERE id=$1',[contact[1]]);
+          return output(res,result.rowCount?200:404,result.rowCount?{deleted:true}:{error:'Contact not found'});
+        }
+        if(req.method==='PATCH'){
+          if(!(req.headers['content-type']||'').startsWith('application/json'))
+            return output(res,415,{error:'Expected application/json'});
+          let payload;try{payload=JSON.parse((await body(req,8192)).toString());}
+          catch{return output(res,400,{error:'Invalid contact request'});}
+          const info=contactData(payload);
+          if(!info)return output(res,400,{error:'Invalid contact fields'});
+          const {rows}=await db.query(
+            "UPDATE contacts SET name=$2,number=$3,email=$4,company=$5,notes=$6,updated_at=now() WHERE id=$1 RETURNING *",
+            [contact[1],info.name,info.number,info.email,info.company,info.notes]);
+          return output(res,rows.length?200:404,rows.length?contactRow(rows[0]):{error:'Contact not found'});
+        }
+        return output(res,405,{error:'Method not allowed'},{Allow:'PATCH, DELETE'});
+      }
       if(req.method==='GET'&&p==='/api/faxes'){
-        const {rows}=await db.query('SELECT * FROM faxes ORDER BY created_at DESC LIMIT 100');
-        return output(res,200,{items:rows.map(row)});
+        const limit=Math.min(250,Math.max(1,Number(url.searchParams.get('limit')||100)||100));
+        const offset=Math.min(100000,Math.max(0,Number(url.searchParams.get('offset')||0)||0));
+        const search=String(url.searchParams.get('q')||'').trim().slice(0,120);
+        const folder=String(url.searchParams.get('folder')||'active');
+        if(!['active','archived','all'].includes(folder))return output(res,400,{error:'Invalid folder'});
+        const {rows}=await db.query(
+          "SELECT * FROM faxes WHERE ($1='all' OR ($1='archived' AND archived_at IS NOT NULL) "+
+          "OR ($1='active' AND archived_at IS NULL)) AND "+
+          "($2='' OR title ILIKE '%'||$2||'%' OR from_number ILIKE '%'||$2||'%' "+
+          "OR to_number ILIKE '%'||$2||'%' OR id::text ILIKE '%'||$2||'%') "+
+          "ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4",[folder,search,limit,offset]);
+        return output(res,200,{items:rows.map(row),limit,offset});
+      }
+      const faxAction=p.match(/^\/api\/faxes\/([0-9a-f-]{36})\/(read|archive)$/i);
+      if(faxAction&&req.method==='PATCH'){
+        const [,id,action]=faxAction;
+        if(!uuid.test(id))return output(res,400,{error:'Invalid fax ID'});
+        if(!(req.headers['content-type']||'').startsWith('application/json'))
+          return output(res,415,{error:'Expected application/json'});
+        let v;try{v=JSON.parse((await body(req,2048)).toString());}
+        catch{return output(res,400,{error:'Invalid fax operation'});}
+        if(typeof v?.enabled!=='boolean')return output(res,400,{error:'Expected enabled boolean'});
+        if(action==='read'){
+          const {rows}=await db.query(
+            "UPDATE faxes SET read_at=CASE WHEN $2 THEN now() ELSE NULL END,updated_at=now() "+
+            "WHERE id=$1 AND direction='inbound' RETURNING *",[id,v.enabled]);
+          return output(res,rows.length?200:404,rows.length?row(rows[0]):{error:'Incoming fax not found'});
+        }
+        const {rows}=await db.query(
+          "UPDATE faxes SET archived_at=CASE WHEN $2 THEN now() ELSE NULL END,updated_at=now() "+
+          "WHERE id=$1 RETURNING *",[id,v.enabled]);
+        return output(res,rows.length?200:404,rows.length?row(rows[0]):{error:'Fax not found'});
       }
       if(req.method==='GET'&&p==='/api/stats'){
         const {rows}=await db.query("SELECT "+
