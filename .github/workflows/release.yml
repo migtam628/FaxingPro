@@ -80,6 +80,8 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: package
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download installers
         uses: actions/download-artifact@v4
@@ -87,9 +89,12 @@ jobs:
           pattern: installers-*
           path: release-files
           merge-multiple: true
+      # For commits that edit workflows, GitHub may reject release creation with its
+      # short-lived GITHUB_TOKEN. An optional fine-grained PAT/App token needs both
+      # Contents:write and Workflows:write on this repository.
       - name: Publish release assets
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.FAXINGPRO_RELEASE_TOKEN || github.token }}
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
