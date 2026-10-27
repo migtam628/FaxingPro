@@ -92,6 +92,47 @@ const setup=async()=>{
   await db.query("CREATE TABLE IF NOT EXISTS operator_sessions ("+
     "token_hash TEXT PRIMARY KEY,token_fingerprint TEXT NOT NULL,"+
     "expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ DEFAULT now())");
+  await db.query("CREATE TABLE IF NOT EXISTS app_settings ("+
+    "id INTEGER PRIMARY KEY CHECK(id=1),workspace_name TEXT NOT NULL DEFAULT 'FaxingPro',"+
+    "timezone TEXT NOT NULL DEFAULT 'America/New_York',"+
+    "completed_at TIMESTAMPTZ,updated_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await db.query("INSERT INTO app_settings(id) VALUES(1) ON CONFLICT(id) DO NOTHING");
+};
+const setupSettings=async(req,res)=>{
+  if(req.method==='GET'){
+    const {rows}=await db.query('SELECT workspace_name,timezone,completed_at FROM app_settings WHERE id=1');
+    const v=rows[0];
+    const configured={
+      apiKey:!!e.TELNYX_API_KEY,
+      faxApplication:!!faxApp,
+      phoneNumber:e164US(did),
+      webhookPublicKey:!!e.TELNYX_PUBLIC_KEY,
+      httpsUrl:base.startsWith('https://')
+    };
+    return output(res,200,{
+      complete:!!v.completed_at,
+      workspaceName:v.workspace_name,timezone:v.timezone,
+      provider:'Telnyx Programmable Fax',fromNumber:did||null,
+      publicBaseUrl:base||null,webhookUrl:base?base+'/webhooks/telnyx':null,
+      outboundEnabled:sending,configured
+    });
+  }
+  if(req.method!=='POST')return output(res,405,{error:'Method not allowed'},{Allow:'GET, POST'});
+  if(!(req.headers['content-type']||'').startsWith('application/json'))
+    return output(res,415,{error:'Expected JSON body'});
+  let values;
+  try{values=JSON.parse((await body(req,8192)).toString('utf8'));}
+  catch{return output(res,400,{error:'Invalid configuration request'});}
+  const name=typeof values?.workspaceName==='string'?values.workspaceName.trim():'';
+  const zone=typeof values?.timezone==='string'?values.timezone:'';
+  if(name.length<2||name.length>80||!['America/New_York','America/Chicago','America/Denver',
+    'America/Los_Angeles','America/Phoenix','UTC'].includes(zone))
+    return output(res,400,{error:'Enter a workspace name (2–80 characters) and a supported timezone'});
+  if(!(e.TELNYX_API_KEY&&faxApp&&e164US(did)&&e.TELNYX_PUBLIC_KEY&&base.startsWith('https://')))
+    return output(res,409,{error:'Complete the required Telnyx VPS environment configuration before finishing setup'});
+  await db.query("UPDATE app_settings SET workspace_name=$1,timezone=$2,completed_at=COALESCE(completed_at,now()),updated_at=now() WHERE id=1",
+    [name,zone]);
+  return setupSettings({method:'GET'},res);
 };
 const telnyx=async(record,link)=>{
   const ctl=new AbortController(),timeout=setTimeout(()=>ctl.abort(),15000);
@@ -228,6 +269,7 @@ const app=http.createServer(async(req,res)=>{
     }
     if(p.startsWith('/api/')){
       if(!(await authed(req)))return output(res,401,{error:'Unauthorized'});
+      if(p==='/api/setup')return await setupSettings(req,res);
       if(req.method==='GET'&&p==='/api/capabilities')
         return output(res,200,{transport:'telnyx-fax-api',inbound:true,outbound:sending});
       if(req.method==='GET'&&p==='/api/faxes'){
