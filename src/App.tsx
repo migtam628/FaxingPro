@@ -411,7 +411,7 @@ export default function App(){
               <button className="btn secondary" onClick={()=>void refreshSecurity()}><RefreshCw size={16}/> Refresh security</button>
               <button className="btn secondary" onClick={()=>void signOutEverywhere()}><LockKeyhole size={16}/> Sign out all sessions</button>
             </div>
-          </Panel>
+          </Panel>}
         </div></div>
       </>}
       <footer className="app-footer"><span>FaxingPro · ATLAS v0.4 · Live backend</span><span><span className="footer-dot"/> {health?.faxEnabled?'Telnyx outbound pilot enabled':'Outbound sending locked'}</span></footer>
