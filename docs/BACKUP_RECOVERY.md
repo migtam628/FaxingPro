@@ -77,3 +77,49 @@ Because a restoration may overwrite all existing fax data and expose production 
 Only after running the backup and offline verifier successfully, schedule `scripts/faxingpro-backup.sh` through a restricted systemd timer or root-managed cron job. Monitor its exit code; a passing `/healthz` request does not guarantee a good backup.
 
 **Current status:** ATLAS displays local encrypted-backup records. Offsite uploads, retention, scheduled backup management, and full restore testing still require operator configuration. Do not treat the Backup & Recovery Center as proof of offsite disaster recovery until those are configured and validated.
+
+## v0.5 — Opt-in automated daily LOCAL backups
+
+**Prerequisite:** At least one complete backup directory has been copied to your Mac or another independent location, its encrypted archives have been validated with `scripts/faxingpro-verify-backup.sh`, and your **private age identity remains off the VPS**. This is not yet a full restoration drill.
+
+The new installer creates a root-managed systemd one-shot service and calendar timer for approximately **3:15 AM America/New_York daily** (with up to 10 minutes randomized delay). `Persistent=true` allows a missed job to run on next timer activation. The timer stores only the **public** age recipient in a root-owned 0600 environment file. It does not alter your Telnyx keys, Docker Compose project, webhook URL, or existing PDF volume. It does not enable offsite uploads or archive deletion.
+
+On your VPS:
+
+~~~bash
+cd ~/FaxingPro
+git pull --ff-only
+sudo apt-get install -y age util-linux
+export FAXINGPRO_AGE_RECIPIENT='age1YOUR_REAL_PUBLIC_RECIPIENT'
+bash scripts/install-faxingpro-backup-timer.sh --check
+# With a root shell (or sudo env FAXINGPRO_AGE_RECIPIENT="$FAXINGPRO_AGE_RECIPIENT"):
+bash scripts/install-faxingpro-backup-timer.sh --install
+unset FAXINGPRO_AGE_RECIPIENT
+systemctl list-timers --all faxingpro-backup.timer
+~~~
+
+Replace the public recipient placeholder with the exact real `age1...` value. If not root, use `sudo env FAXINGPRO_AGE_RECIPIENT="$FAXINGPRO_AGE_RECIPIENT" bash scripts/install-faxingpro-backup-timer.sh --install`.
+
+**Do not use these instructions before completing the off-VPS key and backup verification.** To test a run without waiting for the timer:
+
+~~~bash
+sudo systemctl start faxingpro-backup.service
+sudo journalctl -u faxingpro-backup.service -n 80 --no-pager
+sudo systemctl list-timers --all faxingpro-backup.timer
+~~~
+
+Systemd service failures are recorded in the VPS journal; inspect them with `journalctl`. The script prevents overlapping runs using `flock`, and a failed stream exits nonzero instead of recording success. No automatic deletion is performed; monitor disk use and arrange offsite replication before adding retention. The Backup & Recovery Center reads the last successful **local archive** timestamp and warns when it is over 36 hours old. Its timestamp **cannot prove** that systemd is installed/running, that an offsite copy exists, or that full restoration succeeds.
+
+To stop the schedule without deleting any backups or fax records:
+
+~~~bash
+sudo systemctl disable --now faxingpro-backup.timer
+~~~
+
+## Still outstanding
+
+- Select and configure an independent offsite storage destination, including retention and alert delivery.
+- Copy every encrypted archive to that destination and verify it from a different machine.
+- Rehearse a complete restoration to an isolated staging instance (DB and document volume).
+- Add MFA, per-user roles, login rate limits and security auditing before using the app for regulated/sensitive documents.
+

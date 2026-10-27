@@ -12,7 +12,7 @@ Self-hosted fax management for Windows, macOS, Linux and the web, with live Teln
 
 
 > [!IMPORTANT]
-> **v0.4 — Live Telnyx fax workspace with secure onboarding, encrypted backup tooling and an in-app PDF viewer.**
+> **v0.5 development — Live Telnyx fax workspace with secure onboarding, encrypted recovery tools and opt-in daily local backups.**
 > The self-hosted deployment supports real inbound/outbound faxes, signed Telnyx webhooks,
 > encrypted PDF storage, PostgreSQL history and 7-day operator login sessions.
 > On first launch, the wizard verifies the server, checks the configured Telnyx settings
@@ -49,7 +49,7 @@ Self-hosted fax management for Windows, macOS, Linux and the web, with live Teln
 | Persistent operator session | ✅ Live | 7-day HttpOnly Secure cookie, server-side revocation |
 | Fax document encryption | ✅ Live | AES-256-GCM encrypted files in an isolated persistent Docker volume |
 | In-app fax PDF viewer | ✅ Live | Authenticated blob-based multi-page PDF preview, native browser controls, download and print |
-| Backup & Recovery Center | ✅ Pilot | Read-only encrypted backup history in ATLAS; VPS backup and offline verification scripts; offsite replication is manual |
+| Backup & Recovery Center | ✅ Pilot | Read-only local backup freshness; opt-in daily systemd backup timer; offsite replication, restore drills and retention are not yet configured |
 | Contacts and read/unread | ⏳ Planned | Empty, clearly labeled states; no fake contacts |
 | Historical trend reports | ⏳ Planned | Actual aggregate counts exist, but trend charts are not yet implemented |
 | Multiple users, MFA, compliance controls | ⏳ Not production ready | Single-operator pilot; not suitable for regulated/PHI documents |
