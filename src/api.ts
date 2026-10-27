@@ -3,6 +3,10 @@ export type ServerFax = {id:string;direction:'inbound'|'outbound';status:string;
   title:string;filename?:string;pages:number;createdAt:string;failureReason?:string;hasDocument:boolean};
 export type FaxStats = {received:number;sent:number;pending:number;failed:number};
 export type OperatorSession = {authenticated:boolean;expiresAt:string|null};
+export type BackupStatus = {configured:boolean;message:string;runs:{name:string;completed_at:string}[]};
+export function getBackupStatus(endpoint:string):Promise<BackupStatus>{
+  return apiCall<BackupStatus>(endpoint,'','/api/backup/status');
+}
 export type SetupState = {
   complete:boolean; workspaceName:string; timezone:string; provider:string;
   fromNumber:string|null; publicBaseUrl:string|null; webhookUrl:string|null;

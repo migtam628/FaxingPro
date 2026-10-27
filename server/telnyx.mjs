@@ -97,6 +97,8 @@ const setup=async()=>{
     "timezone TEXT NOT NULL DEFAULT 'America/New_York',"+
     "completed_at TIMESTAMPTZ,updated_at TIMESTAMPTZ NOT NULL DEFAULT now())");
   await db.query("INSERT INTO app_settings(id) VALUES(1) ON CONFLICT(id) DO NOTHING");
+  await db.query("CREATE TABLE IF NOT EXISTS backup_runs ("+
+    "name TEXT PRIMARY KEY,completed_at TIMESTAMPTZ NOT NULL DEFAULT now())");
 };
 const setupSettings=async(req,res)=>{
   if(req.method==='GET'){
@@ -270,6 +272,12 @@ const app=http.createServer(async(req,res)=>{
     if(p.startsWith('/api/')){
       if(!(await authed(req)))return output(res,401,{error:'Unauthorized'});
       if(p==='/api/setup')return await setupSettings(req,res);
+      if(req.method==='GET'&&p==='/api/backup/status'){
+        const {rows}=await db.query('SELECT name,completed_at FROM backup_runs ORDER BY completed_at DESC LIMIT 5');
+        return output(res,200,{runs:rows,configured:rows.length>0,
+          message:rows.length?'Encrypted backups recorded by the VPS backup job. Verify offsite copies separately.':
+            'No encrypted backup has been recorded. Configure the VPS backup job before using real business documents.'});
+      }
       if(req.method==='GET'&&p==='/api/capabilities')
         return output(res,200,{transport:'telnyx-fax-api',inbound:true,outbound:sending});
       if(req.method==='GET'&&p==='/api/faxes'){
@@ -291,7 +299,8 @@ const app=http.createServer(async(req,res)=>{
         if(!rows[0]?.file_name)return output(res,404,{error:'Document not stored'});
         const pdf=decryptPdf(await readFile(path.join(dir,rows[0].file_name)),storageKey);
         res.writeHead(200,{'Content-Type':'application/pdf','Cache-Control':'private,no-store',
-          'Content-Disposition':'attachment; filename="'+cleanName(rows[0].filename)+'"',
+          'Content-Disposition':(url.searchParams.get('view')==='inline'?'inline':'attachment')+
+            '; filename="'+cleanName(rows[0].filename)+'"',
           'X-Content-Type-Options':'nosniff'});return res.end(pdf);
       }
     }
