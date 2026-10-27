@@ -22,6 +22,13 @@ for(let i=0;i<30;i++){
 assert.ok(ok,'Telnyx pilot backend failed to become healthy');
 assert.equal((await request('/api/faxes')).status,401);
 assert.equal((await request('/api/faxes',{headers:auth})).status,200);
+assert.equal((await request('/api/backup/status')).status,401);
+const backupBefore=await request('/api/backup/status',{headers:auth});
+assert.equal(backupBefore.status,200);
+const emptyBackup=await backupBefore.json();
+assert.equal(emptyBackup.configured,false);
+assert.deepEqual(emptyBackup.runs,[]);
+
 
 const noLogin=await request('/api/session');
 assert.equal(noLogin.status,200);
@@ -89,4 +96,4 @@ const bad=await request('/webhooks/telnyx',{method:'POST',headers:{'Content-Type
 assert.equal(bad.status,401);
 const send=await request('/api/faxes',{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:'{}'});
 assert.equal(send.status,503,'Outbound must remain locked');
-console.log('PASS: health, first-run setup persistence, configuration validation, secure login, auth/logout, signed webhook, idempotency, database persistence, outbound lock');
+console.log('PASS: secure backup status, health, first-run setup, operator login, signed webhooks, database persistence, outbound lock');

@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'server/telnyx*'
+      - 'scripts/faxingpro-*.sh'
+      - 'src/types.ts'
       - 'deployment/telnyx/**'
       - 'deployment/nginx.conf'
       - 'tests/telnyx*.mjs'
@@ -28,6 +30,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Validate backup and recovery shell syntax
+        run: |
+          bash -n scripts/faxingpro-backup.sh
+          bash -n scripts/faxingpro-verify-backup.sh
       - name: Validate Node module syntax
         run: |
           node --check server/telnyx.mjs
