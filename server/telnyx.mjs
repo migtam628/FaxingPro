@@ -99,6 +99,11 @@ const setup=async()=>{
   await db.query("INSERT INTO app_settings(id) VALUES(1) ON CONFLICT(id) DO NOTHING");
   await db.query("CREATE TABLE IF NOT EXISTS backup_runs ("+
     "name TEXT PRIMARY KEY,completed_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await db.query("CREATE TABLE IF NOT EXISTS backup_offsite_uploads ("+
+    "name TEXT NOT NULL REFERENCES backup_runs(name),"+
+    "provider TEXT NOT NULL,destination TEXT NOT NULL,"+
+    "verified_at TIMESTAMPTZ NOT NULL DEFAULT now(),"+
+    "PRIMARY KEY (name,provider))");
 };
 const setupSettings=async(req,res)=>{
   if(req.method==='GET'){
@@ -273,17 +278,24 @@ const app=http.createServer(async(req,res)=>{
       if(!(await authed(req)))return output(res,401,{error:'Unauthorized'});
       if(p==='/api/setup')return await setupSettings(req,res);
       if(req.method==='GET'&&p==='/api/backup/status'){
-        const {rows}=await db.query('SELECT name,completed_at FROM backup_runs ORDER BY completed_at DESC LIMIT 5');
+        const {rows}=await db.query(
+          "SELECT b.name,b.completed_at,u.verified_at AS drive_verified_at "+
+          "FROM backup_runs b LEFT JOIN backup_offsite_uploads u "+
+          "ON u.name=b.name AND u.provider='google-drive' "+
+          "ORDER BY b.completed_at DESC LIMIT 5");
         const last=rows[0]?.completed_at||null;
         const ageHours=last?Math.round(((Date.now()-new Date(last).getTime())/3600000)*10)/10:null;
         const freshness=last?(ageHours<=36?'recent':'stale'):'missing';
+        const offsiteVerified=!!rows[0]?.drive_verified_at;
+        const offsiteFreshness=!last?'missing':offsiteVerified?'current':'pending';
         return output(res,200,{runs:rows,configured:rows.length>0,
           lastSuccessfulAt:last,ageHours,freshness,
-          // A recorded timestamp proves only local archive creation, not scheduled runs/offsite recovery.
-          scheduleVerified:false,offsiteVerified:false,
-          message:freshness==='recent'?'Recent encrypted local archive creation recorded. Verify offsite copies separately.':
+          scheduleVerified:false,offsiteVerified,offsiteProvider:'Google Drive',offsiteFreshness,
+          message:freshness==='recent'?'Recent encrypted local archive creation recorded.':
             freshness==='stale'?'Most recent local backup record is over 36 hours old. Check the VPS timer and journald.':
             'No encrypted local backup has been recorded. Run the VPS backup script first.'});
+        // The Google Drive verified_at record means the encrypted files matched on rclone check,
+        // NOT that an offline decrypt / full database restoration has succeeded.
       }
       if(req.method==='GET'&&p==='/api/capabilities')
         return output(res,200,{transport:'telnyx-fax-api',inbound:true,outbound:sending});
