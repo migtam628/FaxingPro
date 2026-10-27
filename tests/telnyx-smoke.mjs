@@ -87,6 +87,51 @@ const list=await (await request('/api/faxes',{headers:auth})).json();
 assert.ok(list.items.some(f=>f.telnyxId===faxId&&f.direction==='inbound'));
 const fromCookie=await (await request('/api/faxes',{headers:cookieHeader})).json();
 assert.ok(fromCookie.items.some(f=>f.telnyxId===faxId),'Cookie session accesses real fax data');
+assert.equal((await request('/api/contacts')).status,401,'Contacts must require authentication');
+const badContact=await request('/api/contacts',{method:'POST',
+  headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify({name:'A',number:'not-a-number'})});
+assert.equal(badContact.status,400);
+const entry={name:'Test Technician',number:'+13055551234',email:'fax@example.invalid',
+  company:'Test Services',notes:'Fax line used only in ephemeral CI'};
+const created=await request('/api/contacts',{method:'POST',
+  headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify(entry)});
+assert.equal(created.status,201);
+const contact=await created.json();assert.equal(contact.number,entry.number);
+const duplicate=await request('/api/contacts',{method:'POST',
+  headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify(entry)});
+assert.equal(duplicate.status,409);
+const listed=await (await request('/api/contacts',{headers:cookieHeader})).json();
+assert.ok(listed.items.some(c=>c.id===contact.id));
+const update=await request('/api/contacts/'+contact.id,{method:'PATCH',
+  headers:{...auth,'Content-Type':'application/json'},
+  body:JSON.stringify({...entry,name:'Updated Technician'})});
+assert.equal(update.status,200);
+assert.equal((await update.json()).name,'Updated Technician');
+assert.ok((await (await request('/api/contacts?q=Updated',{headers:auth})).json())
+  .items.some(c=>c.id===contact.id));
+const faxRecord=fromCookie.items.find(f=>f.telnyxId===faxId);
+assert.equal(faxRecord.readAt,null);
+assert.equal(faxRecord.archivedAt,null);
+assert.equal((await request('/api/faxes/'+faxRecord.id+'/read',{method:'PATCH',
+  headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify({enabled:true})})).status,200);
+const afterRead=await (await request('/api/faxes?folder=active',{headers:auth})).json();
+assert.ok(afterRead.items.some(f=>f.id===faxRecord.id&&f.readAt));
+assert.equal((await request('/api/faxes/'+faxRecord.id+'/archive',{method:'PATCH',
+  headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify({enabled:true})})).status,200);
+assert.ok(!(await (await request('/api/faxes?folder=active',{headers:auth})).json())
+  .items.some(f=>f.id===faxRecord.id),'Archived fax hidden from active records');
+assert.ok((await (await request('/api/faxes?folder=archived&q=13055551234',{headers:auth})).json())
+  .items.some(f=>f.id===faxRecord.id),'Archived fax searchable server-side');
+assert.equal((await request('/api/faxes/'+faxRecord.id+'/archive',{method:'PATCH',
+  headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify({enabled:false})})).status,200);
+assert.ok((await (await request('/api/faxes?folder=active',{headers:auth})).json())
+  .items.some(f=>f.id===faxRecord.id),'Fax can be restored without deletion');
+assert.equal((await request('/api/contacts/'+contact.id,{method:'DELETE',headers:auth})).status,200);
+assert.equal((await request('/api/contacts/'+contact.id,{method:'PATCH',
+  headers:{...auth,'Content-Type':'application/json'},body:JSON.stringify(entry)})).status,404);
+assert.ok((await (await request('/api/faxes?folder=active',{headers:auth})).json())
+  .items.some(f=>f.id===faxRecord.id),'Deleting contact never deletes associated fax');
+
 const logout=await request('/api/session',{method:'DELETE',headers:cookieHeader});
 assert.equal(logout.status,200);
 assert.equal((await (await request('/api/session',{headers:cookieHeader})).json()).authenticated,false,
@@ -130,4 +175,4 @@ const bad=await request('/webhooks/telnyx',{method:'POST',headers:{'Content-Type
 assert.equal(bad.status,401);
 const send=await request('/api/faxes',{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:'{}'});
 assert.equal(send.status,503,'Outbound must remain locked');
-console.log('PASS: backups, security audit, login throttling, revoke-all sessions, health, Telnyx signed webhooks, database persistence and outbound restrictions');
+console.log('PASS: contacts CRUD, read/unread, reversible archives, search, backups, login throttling, signed webhooks, database persistence and outbound restrictions');
