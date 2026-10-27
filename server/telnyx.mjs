@@ -26,6 +26,23 @@ const tokenMatches=value=>{
   return supplied.length===expected.length&&timingSafeEqual(supplied,expected);
 };
 const tokenFingerprint=createHash('sha256').update(secret).digest('hex');
+// Login throttling is intentionally global to this single-operator workspace.
+// Reverse proxy topology does not currently provide a trustworthy end-client IP.
+// Correct API tokens remain usable even while invalid attempts are throttled.
+const maxFailedLogins=8;
+const auditSecurity=async event=>
+  db.query('INSERT INTO operator_security_events(event_type) VALUES($1)',[event]);
+const failedLogin=async()=>{
+  const {rows}=await db.query(
+    "INSERT INTO operator_login_failures(id,failed_count,window_start) VALUES(1,1,now()) "+
+    "ON CONFLICT(id) DO UPDATE SET "+
+    "failed_count=CASE WHEN operator_login_failures.window_start<now()-interval '15 minutes' "+
+    "THEN 1 ELSE operator_login_failures.failed_count+1 END,"+
+    "window_start=CASE WHEN operator_login_failures.window_start<now()-interval '15 minutes' "+
+    "THEN now() ELSE operator_login_failures.window_start END "+
+    "RETURNING failed_count");
+  return rows[0].failed_count;
+};
 const cookieName='__Host-faxingpro_session';
 const cookieBase='Path=/; HttpOnly; Secure; SameSite=Strict';
 const cookieClear=cookieName+'=; '+cookieBase+'; Max-Age=0';
@@ -54,7 +71,10 @@ const operatorSession=async(req,res)=>{
   }
   if(req.method==='DELETE'){
     const raw=sessionCookie(req);
-    if(raw)await db.query('DELETE FROM operator_sessions WHERE token_hash=$1',[sessionHash(raw)]);
+    if(raw){
+      const result=await db.query('DELETE FROM operator_sessions WHERE token_hash=$1',[sessionHash(raw)]);
+      if(result.rowCount)await auditSecurity('logout');
+    }
     return output(res,200,{authenticated:false},{'Set-Cookie':cookieClear});
   }
   if(req.method!=='POST')return output(res,405,{error:'Method not allowed'},{Allow:'GET, POST, DELETE'});
@@ -63,12 +83,20 @@ const operatorSession=async(req,res)=>{
   let payload;
   try{payload=JSON.parse((await body(req,4096)).toString('utf8'));}
   catch{return output(res,400,{error:'Invalid request'});}
-  if(!tokenMatches(payload?.token))
+  if(!tokenMatches(payload?.token)){
+    const count=await failedLogin();
+    if(count<=maxFailedLogins)await auditSecurity('login_failure');
+    if(count>=maxFailedLogins)
+      return output(res,429,{error:'Too many invalid sign-in attempts. Retry later or use the correct operator token.'},
+        {'Retry-After':'900'});
     return output(res,401,{error:'Invalid operator token'});
+  }
+  await db.query('DELETE FROM operator_login_failures WHERE id=1');
   const raw=randomBytes(32).toString('base64url');
   const expires=new Date(Date.now()+7*24*60*60*1000);
   await db.query('INSERT INTO operator_sessions(token_hash,token_fingerprint,expires_at) VALUES($1,$2,$3)',
     [sessionHash(raw),tokenFingerprint,expires]);
+  await auditSecurity('login_success');
   const cookie=cookieName+'='+raw+'; '+cookieBase+'; Max-Age=604800';
   return output(res,200,{authenticated:true,expiresAt:expires.toISOString()},{'Set-Cookie':cookie});
 };
@@ -92,6 +120,14 @@ const setup=async()=>{
   await db.query("CREATE TABLE IF NOT EXISTS operator_sessions ("+
     "token_hash TEXT PRIMARY KEY,token_fingerprint TEXT NOT NULL,"+
     "expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ DEFAULT now())");
+  await db.query("CREATE TABLE IF NOT EXISTS operator_login_failures ("+
+    "id INTEGER PRIMARY KEY CHECK(id=1),failed_count INTEGER NOT NULL,"+
+    "window_start TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await db.query("CREATE TABLE IF NOT EXISTS operator_security_events ("+
+    "id BIGSERIAL PRIMARY KEY,event_type TEXT NOT NULL,"+
+    "created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await db.query("CREATE INDEX IF NOT EXISTS operator_security_events_recent_idx "+
+    "ON operator_security_events(created_at DESC)");
   await db.query("CREATE TABLE IF NOT EXISTS app_settings ("+
     "id INTEGER PRIMARY KEY CHECK(id=1),workspace_name TEXT NOT NULL DEFAULT 'FaxingPro',"+
     "timezone TEXT NOT NULL DEFAULT 'America/New_York',"+
@@ -277,6 +313,25 @@ const app=http.createServer(async(req,res)=>{
     if(p.startsWith('/api/')){
       if(!(await authed(req)))return output(res,401,{error:'Unauthorized'});
       if(p==='/api/setup')return await setupSettings(req,res);
+      if(req.method==='GET'&&p==='/api/security'){
+        const [sessionData,eventsData,failuresData]=await Promise.all([
+          db.query('SELECT count(*)::int AS count FROM operator_sessions WHERE expires_at>now() AND token_fingerprint=$1',[tokenFingerprint]),
+          db.query('SELECT event_type AS type,created_at AS "createdAt" FROM operator_security_events ORDER BY created_at DESC LIMIT 20'),
+          db.query("SELECT count(*)::int AS count FROM operator_security_events WHERE event_type='login_failure' "+
+            "AND created_at>now()-interval '24 hours'")
+        ]);
+        return output(res,200,{
+          activeSessions:sessionData.rows[0].count,
+          failedLogins24h:failuresData.rows[0].count,
+          events:eventsData.rows,
+          mode:'single-operator',mfaEnabled:false
+        });
+      }
+      if(req.method==='DELETE'&&p==='/api/sessions'){
+        const result=await db.query('DELETE FROM operator_sessions');
+        await auditSecurity('all_sessions_revoked');
+        return output(res,200,{revoked:result.rowCount},{'Set-Cookie':cookieClear});
+      }
       if(req.method==='GET'&&p==='/api/backup/status'){
         const {rows}=await db.query(
           "SELECT b.name,b.completed_at,u.verified_at AS drive_verified_at "+
