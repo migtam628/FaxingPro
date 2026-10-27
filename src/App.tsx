@@ -339,17 +339,25 @@ export default function App(){
             {backupError&&<div className="transport-warning"><AlertTriangle size={18}/>{backupError}</div>}
             {backupStatus&&<div className="notice inner"><Activity size={18}/><div>
               <strong>Local backup freshness: {backupStatus.freshness==='recent'?'Recent':backupStatus.freshness==='stale'?'Overdue':'No record'}</strong>
-              <span>{backupStatus.message} The server does not currently know whether a systemd timer is enabled or an offsite copy exists.</span>
+              <span>{backupStatus.message} Scheduling is configured on your VPS, not in ATLAS, and must be checked with systemctl.</span>
             </div></div>}
             <div className="backup-history">
               <h3>Latest local backup records</h3>
               {backupStatus?.runs.length?backupStatus.runs.map(run=><div className="backup-record" key={run.name}>
                 <CheckCircle2 size={17}/><strong>{run.name}</strong>
-                <span>{new Date(run.completed_at).toLocaleString()}</span></div>):
+                <span>{new Date(run.completed_at).toLocaleString()}</span>
+                <span className={'status '+(run.drive_verified_at?'status-received':'status-queued')}>
+                  {run.drive_verified_at?'Google Drive verified':'Drive upload pending'}</span></div>):
                 <Empty label="No backup job has reported successful encrypted archive creation yet."/>}
             </div>
-            <div className="notice inner"><ShieldCheck size={18}/><div><strong>Offsite verification is separate</strong>
-              <span>These records do not prove an offsite copy exists or that a restoration has succeeded. A private age identity must be held outside the VPS. Run backups from the VPS CLI, not from this web browser.</span></div></div>
+            <div className="settings-card"><Cloud size={22}/><div>
+              <strong>Google Drive encrypted offsite backup</strong>
+              <p>{backupStatus?.offsiteVerified?'The newest locally recorded backup has a successful Google Drive checksum match.':'The latest encrypted backup has not yet been confirmed on Google Drive.'}
+              {' '}Checksum matching verifies the copied encrypted files, not full restoration or Google Drive account recovery.</p></div>
+              <span className={'status '+(backupStatus?.offsiteVerified?'status-received':'status-queued')}>
+                {backupStatus?.offsiteVerified?'Verified':'Not verified'}</span></div>
+            <div className="notice inner"><ShieldCheck size={18}/><div><strong>Recovery key remains offline</strong>
+              <span>Offsite transfer never sends plaintext fax PDFs. Restore testing and protection of the private age key are separate steps. The backup process does not delete local or Google Drive copies.</span></div></div>
             <div className="backup-actions">
               <button className="btn secondary" onClick={()=>void refreshBackups()}><RefreshCw size={16}/> Refresh status</button>
               <a className="btn secondary" href="https://github.com/migtam628/FaxingPro/blob/main/docs/BACKUP_RECOVERY.md" target="_blank" rel="noopener noreferrer">Backup & recovery guide <ArrowUpRight size={15}/></a>

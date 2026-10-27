@@ -4,9 +4,10 @@ export type ServerFax = {id:string;direction:'inbound'|'outbound';status:string;
 export type FaxStats = {received:number;sent:number;pending:number;failed:number};
 export type OperatorSession = {authenticated:boolean;expiresAt:string|null};
 export type BackupStatus = {
-  configured:boolean;message:string;runs:{name:string;completed_at:string}[];
+  configured:boolean;message:string;runs:{name:string;completed_at:string;drive_verified_at:string|null}[];
   lastSuccessfulAt:string|null;ageHours:number|null;freshness:'recent'|'stale'|'missing';
   scheduleVerified:boolean;offsiteVerified:boolean;
+  offsiteProvider:'Google Drive';offsiteFreshness:'current'|'pending'|'missing';
 };
 export function getBackupStatus(endpoint:string):Promise<BackupStatus>{
   return apiCall<BackupStatus>(endpoint,'','/api/backup/status');
