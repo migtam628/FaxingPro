@@ -264,7 +264,7 @@ const webhook=async(req,res)=>{
     return output(res,200,{ok:true,ignored:true});
   let clientId=null;
   try{const id=Buffer.from(payload.client_state||'','base64').toString();
-    if(/^[0-9a-f-]{36}$/i.test(id))clientId=id;}catch{}
+    if(uuid.test(id))clientId=id;}catch{}
   const eventAt=!Number.isNaN(Date.parse(event.occurred_at))?new Date(event.occurred_at):new Date();
   const conn=await db.connect();
   try{
@@ -275,19 +275,28 @@ const webhook=async(req,res)=>{
     if(!inserted.rowCount){await conn.query('COMMIT');return output(res,200,{ok:true,duplicate:true});}
     const media=event.event_type==='fax.received'?String(payload.media_url||''):'';
     if(payload.direction==='inbound'){
-      await conn.query("INSERT INTO faxes(id,telnyx_id,direction,status,from_number,to_number,title,pages,media_url,download_state,last_event_at)"+
-        " VALUES($1,$2,'inbound',$3,$4,$5,'Incoming fax',$6,$7,$8,$9) ON CONFLICT(telnyx_id) DO NOTHING",
+      await conn.query("INSERT INTO faxes(id,telnyx_id,direction,status,from_number,to_number,title,pages,media_url,download_state,last_event_at,failure_reason)"+
+        " VALUES($1,$2,'inbound',$3,$4,$5,'Incoming fax',$6,$7,$8,$9,$10) ON CONFLICT(telnyx_id) DO NOTHING",
         [randomUUID(),faxId,state,String(payload.from||''),String(payload.to||''),
-          Number(payload.page_count)||0,media||null,media?'pending':null,eventAt]);
+          Number(payload.page_count)||0,media||null,media?'pending':null,eventAt,
+          state==='failed'?String(payload.failure_reason||''):null]);
     }
+    // Signed events may arrive late or out of order. Preserve the first terminal
+    // result and all associated metadata; still retain every unique event in the timeline.
+    // Correlation is permitted independently so a late client_state can link an
+    // outbound record without changing its confirmed delivery outcome.
+    const applicable="last_event_at<=$2 AND status NOT IN ('delivered','received','failed')";
     await conn.query("UPDATE faxes SET "+
-      "status=CASE WHEN last_event_at<=$2 AND status NOT IN ('delivered','received','failed') THEN $3 ELSE status END,"+
-      "pages=GREATEST(pages,$4),failure_reason=CASE WHEN $3='failed' THEN $5 ELSE failure_reason END,"+
-      "media_url=CASE WHEN $3='received' AND $6<>'' THEN $6 ELSE media_url END,"+
-      "download_state=CASE WHEN $3='received' AND $6<>'' AND file_name IS NULL THEN 'pending' ELSE download_state END,"+
-      "last_event_at=GREATEST(last_event_at,$2),updated_at=now(),telnyx_id=COALESCE(telnyx_id,$1)"+
-      " WHERE telnyx_id=$1 OR ($7::uuid IS NOT NULL AND id=$7::uuid)",
-      [faxId,eventAt,state,Number(payload.page_count)||0,String(payload.failure_reason||''),media,clientId]);
+      "status=CASE WHEN "+applicable+" THEN $3 ELSE status END,"+
+      "pages=CASE WHEN "+applicable+" THEN GREATEST(pages,$4) ELSE pages END,"+
+      "failure_reason=CASE WHEN "+applicable+" AND $3='failed' THEN $5 ELSE failure_reason END,"+
+      "media_url=CASE WHEN "+applicable+" AND $3='received' AND $6<>'' THEN $6 ELSE media_url END,"+
+      "download_state=CASE WHEN "+applicable+" AND $3='received' AND $6<>'' AND file_name IS NULL THEN 'pending' ELSE download_state END,"+
+      "last_event_at=CASE WHEN "+applicable+" THEN $2 ELSE last_event_at END,"+
+      "updated_at=CASE WHEN "+applicable+" THEN now() ELSE updated_at END,"+
+      "telnyx_id=COALESCE(telnyx_id,$1)"+
+      " WHERE (telnyx_id=$1 OR ($7::uuid IS NOT NULL AND id=$7::uuid)) AND direction=$8",
+      [faxId,eventAt,state,Number(payload.page_count)||0,String(payload.failure_reason||''),media,clientId,payload.direction]);
     await conn.query('COMMIT');
   }catch(err){await conn.query('ROLLBACK');throw err;}finally{conn.release();}
   return output(res,200,{ok:true});

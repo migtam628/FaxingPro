@@ -83,6 +83,49 @@ assert.equal(res.status,200,'Authenticated webhook should succeed');
 res=await request('/webhooks/telnyx',webhookOptions);
 assert.equal(res.status,200);
 assert.equal((await res.json()).duplicate,true,'Duplicate webhook must be idempotent');
+// Signed, unique but out-of-order webhook events must not corrupt fax status or
+// metadata. A duplicate event is still idempotent, and all unique events remain
+// visible in the audit timeline. These are synthetic events in ephemeral CI only.
+async function sendSignedEvent(type,occurredAt,extra={},direction='inbound',id=randomUUID()){
+  const event={data:{id,event_type:type,occurred_at:occurredAt,
+    payload:{fax_id:faxId,direction,from:'+13055551234',to:'+13055559876',...extra}}};
+  const content=JSON.stringify(event);
+  const stamp=String(Math.floor(Date.now()/1000));
+  const signature=sign(null,Buffer.from(stamp+'|'+content),priv).toString('base64');
+  return request('/webhooks/telnyx',{method:'POST',headers:{
+    'Content-Type':'application/json','telnyx-timestamp':stamp,
+    'telnyx-signature-ed25519':signature},body:content});
+}
+const eventBase=Date.parse(obj.data.occurred_at);
+const stale=await sendSignedEvent('fax.failed',new Date(eventBase-1000).toISOString(),
+  {page_count:99,failure_reason:'stale failure should be ignored'});
+assert.equal(stale.status,200);
+const afterStale=(await (await request('/api/faxes',{headers:auth})).json()).items.find(f=>f.telnyxId===faxId);
+assert.equal(afterStale.status,'receiving');
+assert.equal(afterStale.pages,0,'Stale event cannot inflate page count');
+assert.equal(afterStale.failureReason,null,'Stale failure cannot overwrite failure metadata');
+const receivedId=randomUUID();
+const received=await sendSignedEvent('fax.received',new Date(eventBase+1000).toISOString(),
+  {page_count:2},'inbound',receivedId);
+assert.equal(received.status,200);
+const terminalFailure=await sendSignedEvent('fax.failed',new Date(eventBase+2000).toISOString(),
+  {page_count:77,failure_reason:'late failure should not replace received'});
+assert.equal(terminalFailure.status,200);
+const lateProgress=await sendSignedEvent('fax.receiving.started',new Date(eventBase+3000).toISOString(),
+  {page_count:55});
+assert.equal(lateProgress.status,200);
+const wrongDirection=await sendSignedEvent('fax.failed',new Date(eventBase+4000).toISOString(),
+  {page_count:44,failure_reason:'wrong direction'},'outbound');
+assert.equal(wrongDirection.status,200);
+const replay=await sendSignedEvent('fax.received',new Date(eventBase+1000).toISOString(),
+  {page_count:2},'inbound',receivedId);
+assert.equal(replay.status,200);
+assert.equal((await replay.json()).duplicate,true);
+const finalRecord=(await (await request('/api/faxes',{headers:auth})).json()).items.find(f=>f.telnyxId===faxId);
+assert.equal(finalRecord.status,'received','Terminal delivery state is immutable');
+assert.equal(finalRecord.pages,2,'Late events cannot change terminal page count');
+assert.equal(finalRecord.failureReason,null,'Late failures cannot set failure reason on received fax');
+
 const list=await (await request('/api/faxes',{headers:auth})).json();
 assert.ok(list.items.some(f=>f.telnyxId===faxId&&f.direction==='inbound'));
 const fromCookie=await (await request('/api/faxes',{headers:cookieHeader})).json();
@@ -120,7 +163,12 @@ assert.ok(dailyReport.days.some(d=>d.received>=1));
 assert.equal((await request('/api/faxes/'+faxRecord.id+'/events')).status,401);
 const timeline=await request('/api/faxes/'+faxRecord.id+'/events',{headers:auth});
 assert.equal(timeline.status,200);
-assert.ok((await timeline.json()).events.some(e=>e.type==='fax.receiving.started'));
+const timelineEvents=(await timeline.json()).events;
+assert.ok(timelineEvents.some(e=>e.type==='fax.receiving.started'));
+assert.equal(timelineEvents.filter(e=>e.type==='fax.received').length,1,
+  'Replayed signed webhook must not create duplicate event history');
+assert.ok(timelineEvents.some(e=>e.type==='fax.failed'),
+  'Out-of-order events remain visible for operator reconciliation');
 
 assert.equal(faxRecord.readAt,null);
 assert.equal((await request('/api/notifications')).status,401);
@@ -207,4 +255,4 @@ const bad=await request('/webhooks/telnyx',{method:'POST',headers:{'Content-Type
 assert.equal(bad.status,401);
 const send=await request('/api/faxes',{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:'{}'});
 assert.equal(send.status,503,'Outbound must remain locked');
-console.log('PASS: authenticated notification preferences, real unread alerts, contacts, fax archives, signed events, 30-day reports, backups, login throttling and safety restrictions');
+console.log('PASS: webhook replay/out-of-order/terminal metadata safety, authenticated notification preferences, real unread alerts, contacts, fax archives, signed events, 30-day reports, backups, login throttling and safety restrictions');

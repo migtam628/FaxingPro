@@ -46,4 +46,27 @@ bash "$root/scripts/faxingpro-drive-upload.sh" --upload-pending
 count="$("${compose[@]}" exec -T db psql -U faxingpro -d faxingpro -tAc "SELECT count(*) FROM backup_offsite_uploads WHERE provider='google-drive'")"
 [[ "$count" == 1 ]]
 node "$root/tests/telnyx-drive-monitor.mjs"
-echo "PASS: mocked Google Drive copy/check, offsite ledger and idempotent rerun"
+
+# A newer encrypted snapshot whose remote verification fails must NOT be
+# recorded as an offsite success. Only ephemeral CI fixture archives are copied.
+original="$(find "$backup_root" -mindepth 1 -maxdepth 1 -type d -name '20*T*Z' | head -1)"
+[[ -n "$original" ]] || { echo "Missing CI snapshot fixture" >&2; exit 1; }
+new_stamp="$(date -u -d '+1 minute' +%Y%m%dT%H%M%SZ)"
+[[ ! -e "$backup_root/$new_stamp" ]] || { echo "CI snapshot name collision" >&2; exit 1; }
+cp -a "$original" "$backup_root/$new_stamp"
+"${compose[@]}" exec -T db psql -U faxingpro -d faxingpro -v ON_ERROR_STOP=1 -c \
+  "INSERT INTO backup_runs(name,completed_at) VALUES('$new_stamp',now())" >/dev/null
+if TEST_FAIL_CHECK=1 bash "$root/scripts/faxingpro-drive-upload.sh" --upload-pending; then
+  echo "ERROR: failed remote verification returned success" >&2
+  exit 1
+fi
+count="$("${compose[@]}" exec -T db psql -U faxingpro -d faxingpro -tAc "SELECT count(*) FROM backup_offsite_uploads WHERE provider='google-drive'")"
+[[ "$count" == 1 ]] || { echo "Unverified snapshot incorrectly marked as uploaded" >&2; exit 1; }
+node "$root/tests/telnyx-drive-failure.mjs"
+
+# A subsequent successful checksum verification can safely record the retry.
+bash "$root/scripts/faxingpro-drive-upload.sh" --upload-pending
+count="$("${compose[@]}" exec -T db psql -U faxingpro -d faxingpro -tAc "SELECT count(*) FROM backup_offsite_uploads WHERE provider='google-drive'")"
+[[ "$count" == 2 ]]
+node "$root/tests/telnyx-drive-monitor.mjs"
+echo "PASS: mocked Drive verification failure, no false offsite success, safe retry and idempotent rerun"

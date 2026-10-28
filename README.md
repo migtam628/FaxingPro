@@ -132,6 +132,8 @@ npm run desktop
 
 The system preserves three independent recovery components: **PostgreSQL database**, **AES-GCM encrypted PDF volume**, and **VPS encryption/configuration secrets**. The [Backup & Recovery runbook](docs/BACKUP_RECOVERY.md) uses an off-VPS `age` private identity to encrypt and validate archives. The optional [Google Drive integration](docs/GOOGLE_DRIVE_BACKUPS.md) uses rclone with your own Google OAuth app to upload encrypted archives, verify checksums and show per-snapshot offsite status.
 
+**Webhook consistency:** Signed Telnyx events are recorded once by event ID. Older events, direction-mismatched events, and events arriving after a terminal result cannot overwrite the confirmed fax status or its associated page count/failure/media metadata. This does **not** automatically retry unknown-outcome transmissions; operator reconciliation remains required. [Webhook reliability and test cases](docs/WEBHOOK_RELIABILITY.md).
+
 **Important:** Google Drive verification proves the encrypted bytes matched at upload time; it is **not** an isolated restoration test. The Google Drive OAuth configuration and age private identity must never be committed or exposed in logs, screenshots or tickets. Scheduled backups do not delete old archives automatically; monitor storage growth.
 
 ## GitHub release publishing permissions
@@ -171,6 +173,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 ## Documentation
 
 - [Deployment and Telnyx API](docs/TELNYX_API_DEPLOYMENT.md)
+- [Signed webhook reliability and reconciliation safeguards](docs/WEBHOOK_RELIABILITY.md)
 - [Security and operator sessions](docs/SECURITY_SESSIONS.md)
 - [PostgreSQL and encrypted document recovery](docs/BACKUP_RECOVERY.md)
 - [Google Drive setup](docs/GOOGLE_DRIVE_BACKUPS.md)
