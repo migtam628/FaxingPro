@@ -84,7 +84,7 @@ docker run -d --rm --name "$pgname" --network none \
   postgres:17-alpine >/dev/null
 ready=false
 for ((i=0;i<45;i++)); do
-  if docker exec "$pgname" pg_isready -U faxingpro -d faxingpro >/dev/null 2>&1; then
+  if docker exec "$pgname" psql -U faxingpro -d faxingpro -tAc 'SELECT 1' >/dev/null 2>&1; then
     ready=true
     break
   fi
