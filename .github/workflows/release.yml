@@ -146,3 +146,52 @@ jobs:
             tag="v0.1.0-preview.${GITHUB_RUN_NUMBER}"
             gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "FaxingPro $tag" --prerelease --notes-file release-files/RELEASE_NOTES.md
           fi
+
+  verify-published-release:
+    name: Verify published installer and documentation
+    if: github.event_name != 'pull_request'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download published documentation assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+          else
+            tag="v0.1.0-preview.${GITHUB_RUN_NUMBER}"
+          fi
+          mkdir -p verify
+          for filename in SHA256SUMS faxingpro-install.sh README.md FaxingPro-Setup-Docs.zip RELEASE_NOTES.md; do
+            gh release download "$tag" --pattern "$filename" --dir verify
+          done
+          cd verify
+          grep -E '  (SHA256SUMS|faxingpro-install.sh|README.md|FaxingPro-Setup-Docs.zip|RELEASE_NOTES.md)$' SHA256SUMS > doc-checksums.txt
+          test "$(wc -l < doc-checksums.txt)" -eq 4
+          sha256sum -c doc-checksums.txt
+          bash -n faxingpro-install.sh
+          bash faxingpro-install.sh --self-test
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          with ZipFile("FaxingPro-Setup-Docs.zip") as archive:
+              names = set(archive.namelist())
+              required = {
+                  "README.md", "docs/VPS_ONE_CLICK_INSTALL.md",
+                  "docs/TELNYX_API_DEPLOYMENT.md",
+                  "docs/BACKUP_RECOVERY.md", "docs/GOOGLE_DRIVE_BACKUPS.md",
+              }
+              assert required.issubset(names), required - names
+              assert archive.testzip() is None
+              assert archive.read("README.md") == Path("README.md").read_bytes()
+          notes = Path("RELEASE_NOTES.md").read_text()
+          assert "## Easy Ubuntu VPS installer" in notes
+          assert "Daily encrypted backups and Google Drive" in notes
+          print("PASS: release docs match README, verify checksums, installer syntax and ZIP integrity")
+          PY
