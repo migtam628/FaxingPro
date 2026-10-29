@@ -509,7 +509,34 @@ const app=http.createServer(async(req,res)=>{
           number:r.direction==='inbound'?r.from_number:r.to_number,
           createdAt:r.created_at
         }));
-        return output(res,200,{items,total:count.rows[0].total});
+        // These notifications are based strictly on local backup records.
+        // They cannot prove that Google Drive is reachable NOW or a restore works.
+        const {rows:archives}=await db.query(
+          "SELECT b.name,b.completed_at,u.verified_at AS drive_verified_at "+
+          "FROM backup_runs b LEFT JOIN backup_offsite_uploads u "+
+          "ON b.name=u.name AND u.provider='google-drive' "+
+          "ORDER BY b.completed_at DESC LIMIT 1");
+        const latest=archives[0];
+        const ageHours=latest?(Date.now()-new Date(latest.completed_at).getTime())/3600000:null;
+        const backupAlerts=[];
+        if(!latest){
+          backupAlerts.push({id:'backup-not-configured',faxId:null,kind:'backup',
+            title:'No encrypted backup recorded',
+            description:'No local FaxingPro backup has completed. Check the recovery guide and VPS timer.',
+            number:'Backup & Recovery',createdAt:new Date().toISOString()});
+        }else{
+          if(ageHours>36)backupAlerts.push({id:'backup-local-stale',faxId:null,kind:'backup',
+            title:'Local backups overdue',
+            description:'The newest encrypted local archive is over 36 hours old. Check the VPS systemd service.',
+            number:'Backup & Recovery',createdAt:latest.completed_at});
+          if(!latest.drive_verified_at&&ageHours>2)backupAlerts.push({
+            id:'backup-drive-pending',faxId:null,kind:'backup',
+            title:'Google Drive backup unverified',
+            description:'The newest local archive has no recorded Google Drive checksum match after 2 hours.',
+            number:'Backup & Recovery',createdAt:latest.completed_at
+          });
+        }
+        return output(res,200,{items:[...backupAlerts,...items],total:count.rows[0].total+backupAlerts.length});
       }
       if(p==='/api/contacts'){
         if(req.method==='GET'){
