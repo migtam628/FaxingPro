@@ -61,6 +61,30 @@ export function setFaxFlag(endpoint:string,id:string,field:'read'|'archive',enab
 }
 
 export type OperatorSession = {authenticated:boolean;expiresAt:string|null};
+// Integration credentials are generated once and NEVER persisted by the browser.
+export type IntegrationScope = 'faxes:read'|'contacts:read'|'reports:read';
+export type IntegrationToken = {
+  id:string;name:string;prefix:string;scopes:IntegrationScope[];
+  createdAt:string;expiresAt:string;lastUsedAt:string|null;revokedAt:string|null;
+};
+export type NewIntegrationToken = IntegrationToken&{token:string};
+export function listIntegrationTokens(endpoint:string):Promise<{items:IntegrationToken[]}>{
+  return apiCall<{items:IntegrationToken[]}>(endpoint,'','/api/tokens');
+}
+export function createIntegrationToken(endpoint:string,fields:{
+  name:string;scopes:IntegrationScope[];expiresInDays:7|30|90;
+}):Promise<NewIntegrationToken>{
+  return apiCall<NewIntegrationToken>(endpoint,'','/api/tokens',{
+    method:'POST',headers:{'Content-Type':'application/json','X-FaxingPro-Action':'token-manager'},
+    body:JSON.stringify(fields)
+  });
+}
+export function revokeIntegrationToken(endpoint:string,id:string):Promise<{revoked:boolean}>{
+  return apiCall<{revoked:boolean}>(endpoint,'','/api/tokens/'+encodeURIComponent(id),{
+    method:'DELETE',headers:{'X-FaxingPro-Action':'token-manager'}
+  });
+}
+
 export type SecurityStatus = {
   activeSessions:number;failedLogins24h:number;
   events:{type:string;createdAt:string}[];
