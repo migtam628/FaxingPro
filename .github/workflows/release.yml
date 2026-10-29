@@ -123,10 +123,23 @@ jobs:
           cp scripts/install-vps.sh release-files/faxingpro-install.sh
           chmod 0755 release-files/faxingpro-install.sh
           cp README.md release-files/README.md
-          python3 -m zipfile -c release-files/FaxingPro-Setup-Docs.zip \
-            README.md docs/VPS_ONE_CLICK_INSTALL.md docs/TELNYX_API_DEPLOYMENT.md \
-            docs/BACKUP_RECOVERY.md docs/GOOGLE_DRIVE_BACKUPS.md \
-            docs/SECURITY_SESSIONS.md docs/WEBHOOK_RELIABILITY.md
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          files = [
+              Path("README.md"),
+              Path("docs/VPS_ONE_CLICK_INSTALL.md"),
+              Path("docs/TELNYX_API_DEPLOYMENT.md"),
+              Path("docs/BACKUP_RECOVERY.md"),
+              Path("docs/GOOGLE_DRIVE_BACKUPS.md"),
+              Path("docs/SECURITY_SESSIONS.md"),
+              Path("docs/WEBHOOK_RELIABILITY.md"),
+          ]
+          with ZipFile("release-files/FaxingPro-Setup-Docs.zip", "w", ZIP_DEFLATED) as output:
+              for source in files:
+                  assert source.is_file() and source.stat().st_size > 0
+                  output.write(source, arcname=source.as_posix())
+          PY
           test -s release-files/FaxingPro-Setup-Docs.zip
           {
             printf '# FaxingPro ATLAS — installation, configuration and downloads\n\n'
