@@ -29,6 +29,13 @@ assert.equal(backupBefore.status,200);
 const emptyBackup=await backupBefore.json();
 assert.equal(emptyBackup.configured,false);
 assert.deepEqual(emptyBackup.runs,[]);
+const missingBackupNotifications=await request('/api/notifications',{headers:auth});
+assert.equal(missingBackupNotifications.status,200);
+const initialNotifications=await missingBackupNotifications.json();
+assert.ok(initialNotifications.items.some(item=>item.kind==='backup'&&item.id==='backup-not-configured'),
+  'Missing encrypted backups must appear as a real operator alert');
+assert.equal((await request('/api/notifications')).status,401);
+
 
 
 const noLogin=await request('/api/session');
