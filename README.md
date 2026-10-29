@@ -32,6 +32,7 @@
 | Fax notification center | Implemented in v0.8 | Real unread inbound and failed transmission alerts, 60-second polling, opt-in browser notifications, stored preferences |
 | Manual outbound reconciliation | Implemented in v0.8 (read-only) | Authenticated queue review for unknown or stalled outbound jobs with correlated signed webhook history; never retries or changes status |
 | Sessions and security history | Implemented | Seven-day secure cookie, failed-login throttling, session counts, revoke-all and operator audit |
+| Read-only integration API Token Manager | Implemented in v0.8 | Operator-only create/list/revoke, hashed credentials, 7/30/90-day expiry, last use and scoped permissions |
 | Encrypted local backups | Implemented | Streamed PostgreSQL, fax-volume and env archives encrypted to off-VPS age recipient |
 | Google Drive backup integration | Implemented | rclone uploader, checksum comparison, offsite status and scheduled post-backup hook |
 | Full disaster-recovery rehearsal | Operator action | Independently restore both DB and files on a separate isolated staging host |
@@ -269,6 +270,31 @@ npm install
 npm run build
 npm run desktop
 ~~~
+
+## Managing API access safely
+
+**Administrator sign-in:** A new VPS installation generates a random 64-character hex `API_TOKEN` in `deployment/telnyx/.env`. Sign in at **your own HTTPS FaxingPro server**, not the public GitHub Pages site. Existing operator sessions are HttpOnly, Secure and SameSite=Strict. You can view active sessions and revoke all browser sessions in ATLAS → **Security**.
+
+**Read-only integration tokens:** The Security panel now has an **API Tokens** manager. An authenticated operator can name a new token, select `faxes:read`, `contacts:read` and/or `reports:read`, and select **7, 30 or 90 days**. The secret is shown **exactly once** at creation—copy it to a password manager before dismissing it. Only its SHA-256 digest is stored in PostgreSQL; token metadata includes a safe prefix, scope, expiration, last-used timestamp and revocation state. Up to 10 active credentials are allowed.
+
+~~~bash
+# Example: call a READ-ONLY resource using a token you created in ATLAS.
+# Do not paste the real token into public terminal history or GitHub.
+read -rsp 'Read-only FaxingPro token: ' FAXINGPRO_READ_TOKEN; echo
+curl -fsS -H "Authorization: Bearer $FAXINGPRO_READ_TOKEN" \
+  https://fax.example.com/api/faxes
+unset FAXINGPRO_READ_TOKEN
+~~~
+
+| Token scope | Allowed integration GET endpoints | Not allowed |
+| --- | --- | --- |
+| `faxes:read` | `/api/faxes`, `/api/stats`, `/api/faxes/:id/events` | PDF downloads, sending and record changes |
+| `contacts:read` | `/api/contacts` | Creating/editing/deleting contacts |
+| `reports:read` | `/api/reports/daily` | Changing settings or reporting data |
+
+Read-only tokens **cannot** exchange themselves for browser operator sessions, download encrypted fax PDFs, send/retry fax jobs, change backups, manage sessions, or create/revoke other tokens. An integration token passed in an explicit `Authorization` header cannot inherit administrator authority from a browser cookie. Expired and revoked tokens stop working immediately; listing tokens never returns their secret.
+
+**Rotating the master `API_TOKEN` still requires VPS administration**, and recreating the API container to load the new environment value. The UI currently manages *integration tokens*, not the original master administrator token. No user accounts, MFA or scoped write/sending tokens are implemented. For detailed controls and safe CLI rotation, see [Security & Sessions](docs/SECURITY_SESSIONS.md).
 
 ## Backup & Recovery
 
