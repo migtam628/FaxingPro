@@ -1,0 +1,72 @@
+name: Validate Clean Ubuntu VPS Installation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/install-vps.sh'
+      - 'deployment/telnyx/**'
+      - 'server/telnyx*'
+      - '.github/workflows/vps-installer-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-install:
+    name: Fresh installer + safe update smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify installer preflight and syntax
+        run: |
+          bash -n scripts/install-vps.sh
+          bash scripts/install-vps.sh --self-test
+          bash scripts/install-vps.sh --check
+      - name: Install FaxingPro to isolated new-server directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A disposable valid Ed25519 public key for this isolated CI runner only.
+          recipient="$(node -e "const c=require('node:crypto');const k=c.generateKeyPairSync('ed25519').publicKey.export({format:'der',type:'spki'});process.stdout.write(k.subarray(-32).toString('base64'))")"
+          sudo env FAXINGPRO_TELNYX_PUBLIC_KEY="$recipient" \
+            bash scripts/install-vps.sh \
+              --yes --domain fax.example.invalid --proxy none \
+              --port 19092 --dir /opt/faxingpro-ci
+      - name: Verify authenticated API, locked sending and generated secrets
+        run: |
+          set -euo pipefail
+          sudo bash scripts/install-vps.sh --status --dir /opt/faxingpro-ci
+          curl --fail --silent --show-error http://127.0.0.1:19092/healthz
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:19092/api/contacts)" = 401
+          sudo grep -qx 'SEND_ENABLED=false' /opt/faxingpro-ci/deployment/telnyx/.env
+          sudo grep -qx 'TEST_DESTINATION=' /opt/faxingpro-ci/deployment/telnyx/.env
+          test "$(sudo stat -c '%a' /opt/faxingpro-ci/deployment/telnyx/.env)" = 600
+          for name in DB_PASSWORD API_TOKEN MEDIA_SIGNING_SECRET STORAGE_ENCRYPTION_KEY; do
+            value="$(sudo sed -n "s/^$name=//p" /opt/faxingpro-ci/deployment/telnyx/.env)"
+            test "${#value}" -eq 64
+          done
+      - name: Verify update preserves persistent database
+        run: |
+          set -euo pipefail
+          cd /opt/faxingpro-ci
+          sudo docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env \
+            exec -T db psql -U faxingpro -d faxingpro -v ON_ERROR_STOP=1 \
+            -c "CREATE TABLE installer_ci_marker (id INTEGER PRIMARY KEY); INSERT INTO installer_ci_marker(id) VALUES(12345);"
+          sudo bash /opt/faxingpro-ci/scripts/install-vps.sh --update --dir /opt/faxingpro-ci
+          count="$(sudo docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env \
+            exec -T db psql -U faxingpro -d faxingpro -tAc 'SELECT COUNT(*) FROM installer_ci_marker WHERE id=12345')"
+          test "$count" -eq 1
+          echo "PASS: fresh installation and safe update retained the existing database."
+      - name: Clean up ephemeral CI services (without deleting volumes)
+        if: always()
+        run: |
+          if [ -f /opt/faxingpro-ci/deployment/telnyx/.env ]; then
+            cd /opt/faxingpro-ci
+            sudo docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env down || true
+          fi
