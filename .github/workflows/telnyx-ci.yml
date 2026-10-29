@@ -20,6 +20,8 @@ on:
       - 'src/ReconciliationPanel.tsx'
       - 'src/ContactsManager.tsx'
       - 'src/NotificationCenter.tsx'
+      - 'src/ApiTokenManager.tsx'
+      - 'src/token-manager.css'
       - 'src/PublicLanding.tsx'
       - 'src/notifications.css'
       - '.github/workflows/telnyx-ci.yml'
