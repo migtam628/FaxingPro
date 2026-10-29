@@ -129,3 +129,15 @@ sudo systemctl disable --now faxingpro-backup.timer
 FaxingPro now supports optional Google Drive uploads of **age-encrypted** local backup archives, with a separate root-owned OAuth configuration, a checksum comparison after transfer, per-snapshot verification records, and an automated systemd post-backup hook. **Use [GOOGLE_DRIVE_BACKUPS.md](GOOGLE_DRIVE_BACKUPS.md)** for the exact headless OAuth, secure credential handling, and deployment instructions.
 
 Offsite verification does not constitute an isolated full restoration test. Automatic local or Drive retention/deletion is still disabled.
+
+## v0.8 — Automated isolated restore test (disposable CI data only)
+
+The [Telnyx backend CI workflow](../.github/workflows/telnyx-ci.yml) now executes `tests/faxingpro-restore-ci.sh` in two stages:
+
+1. **Seed:** Generate a synthetic test PDF, encrypt it using the disposable runner's `STORAGE_ENCRYPTION_KEY` and store a matching fax record and encrypted file in disposable Compose volumes.
+2. **Restore:** Create a real age-encrypted PostgreSQL custom-format backup, encrypted document-volume tar and encrypted environment archive. Validate the SHA-256 manifest, then restore PostgreSQL to a **new uniquely named, network-disconnected PostgreSQL container** and restore documents to a **separate temporary Docker volume**. Confirm the fax row exists and decrypt the recovered PDF with the key from the encrypted environment archive, checking the plaintext SHA-256 digest.
+
+**Safety boundary:** The script explicitly requires a GitHub Actions CI runner, uses only synthetic fax data, creates no listening ports, invokes no Telnyx API and removes only its own randomly named disposable containers/volumes at the end. **Never run or copy this script to your live server as a restoration procedure.** It is a regression test of format and basic restore mechanics, not evidence that your real offsite copies remain available.
+
+**Still required for actual disaster recovery:** Transfer a recent encrypted backup from Google Drive to a separate trusted, access-controlled staging machine. Use the *offline* age identity to validate all three archives; restore them to a separately provisioned isolated database and document volume using an operator-reviewed procedure, with outgoing transmissions disabled and Telnyx credentials never activated. Validate application data and PDFs, record RPO/RTO and failure handling, then destroy only the deliberate staging resources. Never upload a private age identity, live environment file or decrypted backup into GitHub Actions.
+

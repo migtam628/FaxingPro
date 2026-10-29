@@ -276,7 +276,9 @@ The system preserves three independent recovery components: **PostgreSQL databas
 
 **Webhook consistency:** Signed Telnyx events are recorded once by event ID. Older events, direction-mismatched events, and events arriving after a terminal result cannot overwrite the confirmed fax status or its associated page count/failure/media metadata. This does **not** automatically retry unknown-outcome transmissions; operator reconciliation remains required. [Webhook reliability and test cases](docs/WEBHOOK_RELIABILITY.md).
 
-**Important:** Google Drive verification proves the encrypted bytes matched at upload time; it is **not** an isolated restoration test. The Google Drive OAuth configuration and age private identity must never be committed or exposed in logs, screenshots or tickets. Scheduled backups do not delete old archives automatically; monitor storage growth.
+**Automated recovery rehearsal:** The backend CI now seeds a synthetic AES-256-GCM-encrypted PDF and fax record, creates a real age-encrypted database/document/configuration backup, restores the archives into **new network-disconnected Docker containers and uniquely named temporary volumes**, and verifies both the PostgreSQL row and the original decrypted PDF digest. This test is intentionally restricted to disposable GitHub Actions runners; it never runs on the live VPS.
+
+**Important:** CI validates the **backup/restore mechanism using synthetic data**, not recovery of your actual Google Drive archives. Google Drive checksums only prove transferred bytes matched at upload time. An operator still must download a real encrypted backup to a trusted separate computer, confirm the private age identity is recoverable, and rehearse an isolated production-data restoration under an approved runbook. The Google Drive OAuth configuration and age private identity must never be committed or exposed in logs, screenshots or tickets. Scheduled backups do not delete old archives automatically; monitor storage growth.
 
 ## GitHub release publishing permissions
 
@@ -298,7 +300,7 @@ npm run dev
 | Workflow | Purpose |
 | --- | --- |
 | [Deploy ATLAS Website](.github/workflows/pages.yml) | Build/test static product landing page and publish GitHub Pages |
-| [Validate Telnyx Fax Backend](.github/workflows/telnyx-ci.yml) | Node and API smoke tests, isolated Docker Compose, signed webhooks, database migrations, age backup, mocked Drive checks |
+| [Validate Telnyx Fax Backend](.github/workflows/telnyx-ci.yml) | Node/API and signed webhook tests, real age-encrypted backup, synthetic database/PDF restore drill, mocked Google Drive checks |
 | [Build and Release](.github/workflows/release.yml) | Run tests; build Windows, macOS and Linux installers; publish preview release assets |
 
 Deployment to your VPS remains **manual** and isolated from your other services: pushing to GitHub does not automatically restart your production FaxingPro containers.
@@ -310,7 +312,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 - Contact changes are not automatically synchronized with Telnyx or external CRMs.
 - Reporting includes 30-day daily activity but lacks full usage/cost analytics; email/SMS alerts, retention policies and controlled sending retries still need implementation. The read-only reconciliation queue does not resolve provider outcomes or authorize retransmission.
 - The public website and desktop installers are not themselves a fax service. The HTTPS VPS and Telnyx backend must be available.
-- Document viewer and encrypted cloud backup are functional, but **independent restoration and security audits** remain outstanding before using this for regulated workflows.
+- An isolated CI restore drill covers the synthetic backup format, but **a real off-VPS recovery drill using actual Google Drive archives, key access and an independently isolated staging environment**, plus a security audit, remain outstanding before regulated workflows.
 
 ## Documentation
 
