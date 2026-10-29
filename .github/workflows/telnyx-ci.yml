@@ -9,6 +9,7 @@ on:
       - 'scripts/install-vps.sh'
       - 'scripts/install-faxingpro-*.sh'
       - 'tests/faxingpro-drive-ci.sh'
+      - 'tests/faxingpro-restore-ci.sh'
       - 'src/types.ts'
       - 'deployment/telnyx/**'
       - 'deployment/nginx.conf'
@@ -49,6 +50,7 @@ jobs:
           bash -n scripts/faxingpro-drive-upload.sh
           bash -n scripts/install-faxingpro-drive.sh
           bash -n tests/faxingpro-drive-ci.sh
+          bash -n tests/faxingpro-restore-ci.sh
       - name: Validate Node module syntax
         run: |
           node --check server/telnyx.mjs
@@ -78,6 +80,8 @@ jobs:
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --build
       - name: Verify signed webhooks, auth, and persistent fax rows
         run: node tests/telnyx-smoke.mjs
+      - name: Seed encrypted test PDF for full recovery rehearsal
+        run: bash tests/faxingpro-restore-ci.sh seed "$RUNNER_TEMP/recovery-fixture"
       - name: Exercise real encrypted backup streams and manifest
         run: |
           sudo apt-get update -qq
@@ -96,6 +100,8 @@ jobs:
           count="$(docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env exec -T db psql -U faxingpro -d faxingpro -tAc 'SELECT count(*) FROM backup_runs')"
           test "$count" -eq 1
           node tests/telnyx-backup-monitor.mjs
+          bash tests/faxingpro-restore-ci.sh restore "$RUNNER_TEMP/recovery-fixture" \
+            "$archive" "$RUNNER_TEMP/recovery-identity.txt"
       - name: Verify encrypted Google Drive uploader with a mocked rclone remote
         run: |
           bash tests/faxingpro-drive-ci.sh "$RUNNER_TEMP/backup-archives"
