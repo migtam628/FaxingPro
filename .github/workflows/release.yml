@@ -38,211 +38,14 @@ jobs:
           bash -n scripts/install-vps.sh
           bash scripts/install-vps.sh --self-test
           bash scripts/install-vps.sh --help >/dev/null
-      - name: Check installation documentation shipped with releases
+      - name: Validate complete README and VPS documentation
         run: |
-          grep -q '^## Easy Ubuntu VPS installer
-
-  package:
-    name: Package ${{ matrix.os }}
-    needs: test
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            flags: --win nsis --x64
-          - os: macos-latest
-            flags: --mac dmg --x64 --arm64
-          - os: ubuntu-latest
-            flags: --linux AppImage deb --x64
-    runs-on: ${{ matrix.os }}
-    env:
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Build client
-        run: npm run build
-      - name: Create desktop installers
-        run: npx electron-builder ${{ matrix.flags }} --publish never
-      - name: Upload packaged applications
-        uses: actions/upload-artifact@v4
-        with:
-          name: installers-${{ matrix.os }}
-          path: |
-            release/*.exe
-            release/*.dmg
-            release/*.AppImage
-            release/*.deb
-          if-no-files-found: error
-          retention-days: 30
-
-  publish:
-    name: Publish GitHub Release
-    if: github.event_name != 'pull_request'
-    needs: package
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download installers
-        uses: actions/download-artifact@v4
-        with:
-          pattern: installers-*
-          path: release-files
-          merge-multiple: true
-      # For commits that edit workflows, GitHub may reject release creation with its
-      # short-lived GITHUB_TOKEN. An optional fine-grained PAT/App token needs both
-      # Contents:write and Workflows:write on this repository.
-      - name: Publish release assets
-        env:
-          GH_TOKEN: ${{ secrets.FAXINGPRO_RELEASE_TOKEN || github.token }}
-          GH_REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          files=(release-files/*.exe release-files/*.dmg release-files/*.AppImage release-files/*.deb)
-          if [ "${#files[@]}" -lt 4 ]; then
-            echo "Expected multi-platform installers; got ${#files[@]}" >&2
-            exit 1
-          fi
-          cp scripts/install-vps.sh release-files/faxingpro-install.sh
-          chmod 0755 release-files/faxingpro-install.sh
-          cp README.md release-files/README.md
-          # Bundle all public Markdown documentation for offline VPS operators.
-          python3 - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile, ZIP_DEFLATED
-          archive = Path('release-files/FaxingPro-Setup-Docs.zip')
-          with ZipFile(archive, 'w', compression=ZIP_DEFLATED) as out:
-              for file in [Path('README.md'), *sorted(Path('docs').glob('*.md'))]:
-                  if file.is_file():
-                      out.write(file, arcname=file.as_posix())
-          assert archive.stat().st_size > 1000
-          PY
-          cat > release-files/RELEASE_NOTES.md <<'NOTES'
-          # FaxingPro ATLAS — VPS Installer & Desktop Preview
-
-          **Download** `faxingpro-install.sh` for guided Ubuntu VPS deployment. The release also includes `README.md`, `FaxingPro-Setup-Docs.zip` and `SHA256SUMS` for offline instructions and checksum verification.
-
-          Desktop installers are **unsigned preview clients** for Windows, Intel/Apple silicon macOS and Linux. They connect to your own self-hosted HTTPS FaxingPro instance; they do not install the server by themselves.
-
-          The complete VPS installation, existing-proxy setup, Telnyx setup, backups, Google Drive and safe upgrade instructions from the repository's current README follow.
-
-          ---
-          NOTES
-          # Keep the public Release description aligned with the canonical README.
-          awk '/^## Easy Ubuntu VPS installer$/{show=1} /^## Deployment: Docker and Telnyx$/{show=0} show {print}' README.md >> release-files/RELEASE_NOTES.md
-          cat >> release-files/RELEASE_NOTES.md <<'NOTES'
-
-          ---
-          **Security:** Keep operator/Telnyx credentials private. Outbound sending starts disabled, and the pilot does not yet provide MFA, multi-user roles, signed desktop installers or a certified recovery procedure.
-
-          **Full documentation:** Download `README.md` or `FaxingPro-Setup-Docs.zip` from the Assets section. No fax data, private tokens or secrets are bundled.
-          NOTES
-          (cd release-files && sha256sum *.exe *.dmg *.AppImage *.deb faxingpro-install.sh README.md FaxingPro-Setup-Docs.zip RELEASE_NOTES.md > SHA256SUMS)
-          files+=(release-files/faxingpro-install.sh release-files/README.md release-files/FaxingPro-Setup-Docs.zip release-files/RELEASE_NOTES.md release-files/SHA256SUMS)
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            tag="${GITHUB_REF#refs/tags/}"
-            gh release create "$tag" "${files[@]}" --verify-tag --title "FaxingPro $tag" --notes-file release-files/RELEASE_NOTES.md
-          else
-            tag="v0.1.0-preview.${GITHUB_RUN_NUMBER}"
-            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "FaxingPro $tag" --prerelease --notes-file release-files/RELEASE_NOTES.md
-          fi
- README.md
-          grep -q '^### 6. Daily encrypted backups and Google Drive
-
-  package:
-    name: Package ${{ matrix.os }}
-    needs: test
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            flags: --win nsis --x64
-          - os: macos-latest
-            flags: --mac dmg --x64 --arm64
-          - os: ubuntu-latest
-            flags: --linux AppImage deb --x64
-    runs-on: ${{ matrix.os }}
-    env:
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Build client
-        run: npm run build
-      - name: Create desktop installers
-        run: npx electron-builder ${{ matrix.flags }} --publish never
-      - name: Upload packaged applications
-        uses: actions/upload-artifact@v4
-        with:
-          name: installers-${{ matrix.os }}
-          path: |
-            release/*.exe
-            release/*.dmg
-            release/*.AppImage
-            release/*.deb
-          if-no-files-found: error
-          retention-days: 30
-
-  publish:
-    name: Publish GitHub Release
-    if: github.event_name != 'pull_request'
-    needs: package
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download installers
-        uses: actions/download-artifact@v4
-        with:
-          pattern: installers-*
-          path: release-files
-          merge-multiple: true
-      # For commits that edit workflows, GitHub may reject release creation with its
-      # short-lived GITHUB_TOKEN. An optional fine-grained PAT/App token needs both
-      # Contents:write and Workflows:write on this repository.
-      - name: Publish release assets
-        env:
-          GH_TOKEN: ${{ secrets.FAXINGPRO_RELEASE_TOKEN || github.token }}
-          GH_REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          files=(release-files/*.exe release-files/*.dmg release-files/*.AppImage release-files/*.deb)
-          if [ "${#files[@]}" -lt 4 ]; then
-            echo "Expected multi-platform installers; got ${#files[@]}" >&2
-            exit 1
-          fi
-          cp scripts/install-vps.sh release-files/faxingpro-install.sh
-          chmod 0755 release-files/faxingpro-install.sh
-          (cd release-files && sha256sum *.exe *.dmg *.AppImage *.deb faxingpro-install.sh > SHA256SUMS)
-          files+=(release-files/faxingpro-install.sh release-files/SHA256SUMS)
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            tag="${GITHUB_REF#refs/tags/}"
-            gh release create "$tag" "${files[@]}" --verify-tag --title "FaxingPro $tag" --generate-notes
-          else
-            tag="v0.1.0-preview.${GITHUB_RUN_NUMBER}"
-            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "FaxingPro $tag" --prerelease --notes "Unsigned preview desktop builds for Windows, macOS (Intel/Apple silicon), and Linux; download faxingpro-install.sh for guided Ubuntu VPS installation. On first launch, connect to your OWN trusted HTTPS FaxingPro server; the installer does not contain a backend or demo data. Production faxing is provided by your self-hosted Telnyx service with the server-side TEST_DESTINATION restrictions. Review the README and deployment guide before use."
-          fi
- README.md
+          grep -Fq '## Easy Ubuntu VPS installer' README.md
+          grep -Fq '### 6. Daily encrypted backups and Google Drive' README.md
           test -s docs/VPS_ONE_CLICK_INSTALL.md
-          bash -n scripts/install-vps.sh
-          bash scripts/install-vps.sh --self-test
+          test -s docs/TELNYX_API_DEPLOYMENT.md
+          test -s docs/BACKUP_RECOVERY.md
+          test -s docs/GOOGLE_DRIVE_BACKUPS.md
       - name: Build web app
         run: npm run build
 
@@ -316,14 +119,30 @@ jobs:
             echo "Expected multi-platform installers; got ${#files[@]}" >&2
             exit 1
           fi
+          # Ship the full README and a complete documentation bundle with every release.
           cp scripts/install-vps.sh release-files/faxingpro-install.sh
           chmod 0755 release-files/faxingpro-install.sh
-          (cd release-files && sha256sum *.exe *.dmg *.AppImage *.deb faxingpro-install.sh > SHA256SUMS)
-          files+=(release-files/faxingpro-install.sh release-files/SHA256SUMS)
+          cp README.md release-files/README.md
+          python3 -m zipfile -c release-files/FaxingPro-Setup-Docs.zip \
+            README.md docs/VPS_ONE_CLICK_INSTALL.md docs/TELNYX_API_DEPLOYMENT.md \
+            docs/BACKUP_RECOVERY.md docs/GOOGLE_DRIVE_BACKUPS.md \
+            docs/SECURITY_SESSIONS.md docs/WEBHOOK_RELIABILITY.md
+          test -s release-files/FaxingPro-Setup-Docs.zip
+          {
+            printf '# FaxingPro ATLAS — installation, configuration and downloads\n\n'
+            printf '**Assets:** Windows EXE; macOS Intel and Apple silicon DMGs; Linux AppImage and DEB; guided Ubuntu VPS installer; complete README; offline setup documentation ZIP; SHA-256 checksums.\n\n'
+            printf '**Desktop installers are preview clients:** they connect to an already-deployed HTTPS FaxingPro VPS and do not run a fax server themselves.\n\n'
+            printf 'The section below is copied directly from the README at this release commit, so installation instructions remain in sync.\n\n---\n\n'
+          } > release-files/RELEASE_NOTES.md
+          awk '/^## Easy Ubuntu VPS installer$/{show=1} /^## Deployment: Docker and Telnyx$/{show=0} show{print}' README.md >> release-files/RELEASE_NOTES.md
+          test "$(wc -c < release-files/RELEASE_NOTES.md)" -gt 2500
+          printf '\n---\n**Security:** Keep private credentials off GitHub and out of tickets. Fax sending is disabled on first install. MFA, user roles and certified disaster recovery are not yet included.\n' >> release-files/RELEASE_NOTES.md
+          (cd release-files && sha256sum *.exe *.dmg *.AppImage *.deb faxingpro-install.sh README.md FaxingPro-Setup-Docs.zip RELEASE_NOTES.md > SHA256SUMS)
+          files+=(release-files/faxingpro-install.sh release-files/README.md release-files/FaxingPro-Setup-Docs.zip release-files/RELEASE_NOTES.md release-files/SHA256SUMS)
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tag="${GITHUB_REF#refs/tags/}"
-            gh release create "$tag" "${files[@]}" --verify-tag --title "FaxingPro $tag" --generate-notes
+            gh release create "$tag" "${files[@]}" --verify-tag --title "FaxingPro $tag" --notes-file release-files/RELEASE_NOTES.md
           else
             tag="v0.1.0-preview.${GITHUB_RUN_NUMBER}"
-            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "FaxingPro $tag" --prerelease --notes "Unsigned preview desktop builds for Windows, macOS (Intel/Apple silicon), and Linux; download faxingpro-install.sh for guided Ubuntu VPS installation. On first launch, connect to your OWN trusted HTTPS FaxingPro server; the installer does not contain a backend or demo data. Production faxing is provided by your self-hosted Telnyx service with the server-side TEST_DESTINATION restrictions. Review the README and deployment guide before use."
+            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "FaxingPro $tag" --prerelease --notes-file release-files/RELEASE_NOTES.md
           fi
