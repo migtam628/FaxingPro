@@ -60,10 +60,33 @@ const currentSession=async req=>{
     [sessionHash(raw),tokenFingerprint]);
   return rows[0]||null;
 };
-const authed=async req=>{
-  if(tokenMatches((req.headers.authorization||'').replace(/^Bearer\s+/i,'')))return true;
-  return !!(await currentSession(req));
+// An integration token is never a web operator identity. Its permissions apply
+// only to an explicit allowlist of GET endpoints, not documents or mutations.
+const integrationScope=(method,p)=>{
+  if(method!=='GET')return null;
+  if(p==='/api/faxes'||p==='/api/stats'||/^\/api\/faxes\/[0-9a-f-]{36}\/events$/i.test(p))
+    return 'faxes:read';
+  if(p==='/api/contacts')return 'contacts:read';
+  if(p==='/api/reports/daily')return 'reports:read';
+  return null;
 };
+const authContext=async(req,p)=>{
+  const bearer=(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
+  if(tokenMatches(bearer))return {kind:'operator'};
+  if(await currentSession(req))return {kind:'operator'};
+  if(!/^fpx_[A-Za-z0-9_-]{43}$/.test(bearer))return null;
+  const required=integrationScope(req.method,p);
+  if(!required)return {kind:'restricted'};
+  const hashed=createHash('sha256').update(bearer).digest('hex');
+  const {rows}=await db.query(
+    "UPDATE api_tokens SET last_used_at=now() WHERE token_hash=$1 AND revoked_at IS NULL "+
+    "AND expires_at>now() AND $2=ANY(scopes) RETURNING id",[hashed,required]);
+  return rows.length?{kind:'integration',scope:required}:{kind:'restricted'};
+};
+const tokenPublic=r=>({
+  id:r.id,name:r.name,prefix:r.prefix,scopes:r.scopes,createdAt:r.created_at,
+  expiresAt:r.expires_at,lastUsedAt:r.last_used_at,revokedAt:r.revoked_at
+});
 const operatorSession=async(req,res)=>{
   if(req.method==='GET'){
     const active=await currentSession(req);
@@ -147,6 +170,11 @@ const setup=async()=>{
   await db.query("CREATE TABLE IF NOT EXISTS operator_sessions ("+
     "token_hash TEXT PRIMARY KEY,token_fingerprint TEXT NOT NULL,"+
     "expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ DEFAULT now())");
+  await db.query("CREATE TABLE IF NOT EXISTS api_tokens ("+
+    "id UUID PRIMARY KEY,name TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,"+
+    "prefix TEXT NOT NULL,scopes TEXT[] NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"+
+    "expires_at TIMESTAMPTZ NOT NULL,last_used_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ)");
+  await db.query("CREATE INDEX IF NOT EXISTS api_tokens_active_idx ON api_tokens(expires_at) WHERE revoked_at IS NULL");
   await db.query("CREATE TABLE IF NOT EXISTS operator_login_failures ("+
     "id INTEGER PRIMARY KEY CHECK(id=1),failed_count INTEGER NOT NULL,"+
     "window_start TIMESTAMPTZ NOT NULL DEFAULT now())");
@@ -347,7 +375,62 @@ const app=http.createServer(async(req,res)=>{
         'X-Content-Type-Options':'nosniff'});return res.end(pdf);
     }
     if(p.startsWith('/api/')){
-      if(!(await authed(req)))return output(res,401,{error:'Unauthorized'});
+      const auth=await authContext(req,p);
+      if(!auth)return output(res,401,{error:'Unauthorized'});
+      if(auth.kind==='restricted')return output(res,403,{error:'Integration token is expired, revoked or lacks permission for this endpoint'});
+      if(p==='/api/tokens'){
+        if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
+        if(req.method==='GET'){
+          const {rows}=await db.query('SELECT * FROM api_tokens ORDER BY created_at DESC LIMIT 100');
+          return output(res,200,{items:rows.map(tokenPublic)});
+        }
+        if(req.method==='POST'){
+          if(req.headers['x-faxingpro-action']!=='token-manager')
+            return output(res,403,{error:'Token manager request header required'});
+          if(!(req.headers['content-type']||'').startsWith('application/json'))
+            return output(res,415,{error:'Expected application/json'});
+          let data;try{data=JSON.parse((await body(req,4096)).toString());}
+          catch{return output(res,400,{error:'Invalid token request'});}
+          const name=typeof data?.name==='string'?data.name.trim():'';
+          const scopes=data?.scopes;
+          const days=data?.expiresInDays;
+          const validScopes=['faxes:read','contacts:read','reports:read'];
+          if(name.length<2||name.length>64||!/^[a-zA-Z0-9 ._()-]+$/.test(name)||
+            !Array.isArray(scopes)||scopes.length<1||scopes.length>3||
+            new Set(scopes).size!==scopes.length||!scopes.every(x=>validScopes.includes(x))||
+            ![7,30,90].includes(days))
+            return output(res,400,{error:'Provide a name, unique read-only scopes and 7, 30 or 90 day expiration'});
+          const {rows:active}=await db.query(
+            'SELECT count(*)::int AS count FROM api_tokens WHERE revoked_at IS NULL AND expires_at>now()');
+          if(active[0].count>=10)return output(res,409,{error:'Maximum of 10 active integration tokens; revoke one first'});
+          const raw='fpx_'+randomBytes(32).toString('base64url');
+          const hash=createHash('sha256').update(raw).digest('hex');
+          const {rows}=await db.query(
+            "INSERT INTO api_tokens(id,name,token_hash,prefix,scopes,expires_at) "+
+            "VALUES($1,$2,$3,$4,$5,now()+($6*interval '1 day')) RETURNING *",
+            [randomUUID(),name,hash,raw.slice(0,12),scopes,days]);
+          await auditSecurity('api_token_created');
+          // Return the raw secret ONE TIME. The database only stores its SHA-256 hash.
+          return output(res,201,{...tokenPublic(rows[0]),token:raw});
+        }
+        return output(res,405,{error:'Method not allowed'},{Allow:'GET, POST'});
+      }
+      const tokenDelete=p.match(/^\/api\/tokens\/([0-9a-f-]{36})$/i);
+      if(tokenDelete){
+        if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
+        if(req.method!=='DELETE')return output(res,405,{error:'Method not allowed'},{Allow:'DELETE'});
+        if(req.headers['x-faxingpro-action']!=='token-manager')
+          return output(res,403,{error:'Token manager request header required'});
+        if(!uuid.test(tokenDelete[1]))return output(res,400,{error:'Invalid token ID'});
+        const {rows}=await db.query(
+          "UPDATE api_tokens SET revoked_at=now() WHERE id=$1 AND revoked_at IS NULL "+
+          "RETURNING id",[tokenDelete[1]]);
+        if(!rows.length)return output(res,404,{error:'Token not found or already revoked'});
+        await auditSecurity('api_token_revoked');
+        return output(res,200,{revoked:true});
+      }
+      if(auth.kind==='integration'&&!integrationScope(req.method,p))
+        return output(res,403,{error:'This token is restricted to read-only integration endpoints'});
       if(p==='/api/setup')return await setupSettings(req,res);
       if(req.method==='GET'&&p==='/api/security'){
         const [sessionData,eventsData,failuresData]=await Promise.all([
