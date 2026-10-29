@@ -7,6 +7,7 @@ import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight,
   UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
   type LucideIcon } from 'lucide-react';
 import SetupWizard from './SetupWizard';
+import ApiTokenManager from './ApiTokenManager';
 import NotificationCenter from './NotificationCenter';
 import ReconciliationPanel from './ReconciliationPanel';
 import ContactsManager from './ContactsManager';
@@ -493,6 +494,7 @@ export default function App(){
             </div>
           </Panel>}
           {page==='security'&&<Panel title="Security & Sessions">
+            <ApiTokenManager endpoint={apiEndpoint}/>
             <div className="settings-card"><ShieldCheck size={22}/><div><strong>Single-operator authentication</strong>
               <p>API_TOKEN exchange, secure HttpOnly session cookies and persistent invalid-login throttling (8 invalid attempts per 15 minutes). Valid operator credentials remain accepted during an attack.</p></div>
               <span className="status status-received">Enabled</span></div>
