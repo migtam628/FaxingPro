@@ -85,7 +85,7 @@ grep '  faxingpro-install.sh$' SHA256SUMS | sha256sum -c -
 sudo bash faxingpro-install.sh
 ~~~
 
-The release's `README.md` and `FaxingPro-Docs.zip` are offline reference materials. The release checksum file covers the published installers and documentation assets. **Do not execute a remote `curl | sudo bash` pipeline without inspecting what you downloaded.**
+The release's `README.md` and `FaxingPro-Setup-Docs.zip` are offline reference materials. The release checksum file covers the published installers and documentation assets. **Do not execute a remote `curl | sudo bash` pipeline without inspecting what you downloaded.**
 
 For a **shared VPS with an existing reverse proxy**, choose the non-invasive mode:
 
@@ -191,6 +191,21 @@ For detailed backup recovery and Google OAuth headless authorization, use [Backu
 ### 7. Desktop builds are clients, not VPS servers
 
 GitHub Releases also supplies a Windows NSIS installer, macOS Intel/Apple silicon DMGs, and Linux AppImage/DEB packages. They are **unsigned preview desktop clients**: on first launch, enter the URL of your own deployed HTTPS FaxingPro VPS. A desktop installer alone does **not** set up Telnyx, PostgreSQL, or an internet-reachable fax service.
+
+### 8. What's inside a GitHub Release
+
+Every successful [release build](https://github.com/migtam628/FaxingPro/releases) publishes the same installation instructions and files together:
+
+| Download | What it provides |
+| --- | --- |
+| `faxingpro-install.sh` | Guided Ubuntu VPS/server installer |
+| `README.md` | Full setup, DNS/HTTPS, Telnyx, backup, Google Drive, update, recovery and troubleshooting instructions |
+| `FaxingPro-Setup-Docs.zip` | Offline bundle with README and detailed installation/operations guides |
+| `RELEASE_NOTES.md` | Installation instructions automatically copied from the release commit's README |
+| `SHA256SUMS` | Integrity hashes for the installer, documentation, notes and desktop installers |
+| `FaxingPro-0.1.0-*.exe/.dmg/.AppImage/.deb` | Unsigned Windows/macOS/Linux desktop preview clients (requires your running VPS) |
+
+**Installation instructions appear in the release description itself**, not only in separate documentation links. Keep the private Telnyx API key, operator token, encryption keys, rclone credentials, backup identity and fax documents off GitHub and out of downloaded release assets.
 
 ## Deployment: Docker and Telnyx
 
