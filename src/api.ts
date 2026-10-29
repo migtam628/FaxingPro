@@ -3,7 +3,7 @@ export type ServerFax = {id:string;direction:'inbound'|'outbound';status:string;
   title:string;filename?:string;pages:number;createdAt:string;failureReason?:string;hasDocument:boolean;
   readAt:string|null;archivedAt:string|null};
 export type FaxStats = {received:number;sent:number;pending:number;failed:number};
-export type FaxNotification = {id:string;faxId:string;kind:'incoming'|'failed';title:string;description:string;number:string;createdAt:string};
+export type FaxNotification = {id:string;faxId:string|null;kind:'incoming'|'failed'|'backup';title:string;description:string;number:string;createdAt:string};
 export type FaxNotificationFeed = {items:FaxNotification[];total:number};
 export function getNotifications(endpoint:string):Promise<FaxNotificationFeed>{
   return apiCall<FaxNotificationFeed>(endpoint,'','/api/notifications');
