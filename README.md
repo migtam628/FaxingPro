@@ -52,21 +52,145 @@ ATLAS provides Dashboard, Inbox, Sent Faxes, New Fax, Contacts, Documents, Archi
 
 ## Easy Ubuntu VPS installer
 
-Install FaxingPro on a new Ubuntu VPS using an interactive installer that installs/reuses Docker, generates four strong operator/storage/database secrets, deploys PostgreSQL and the FaxingPro web/API containers, and can optionally configure its own Caddy HTTPS proxy.
+FaxingPro includes a **guided Ubuntu VPS installer** that provisions the Docker Engine and Compose plugin when needed, downloads FaxingPro, generates strong independent database/operator/media/storage secrets, deploys the PostgreSQL/API/web containers, and optionally runs a dedicated Caddy HTTPS gateway. The installer also offers **check**, **status** and **safe update** modes.
+
+**Important:** The VPS setup is streamlined, but DNS ownership, Telnyx credentials, DID assignment and Google Drive OAuth still require your authorization. This is a *single-operator pilot*, not a turnkey regulated fax service.
+
+### 1. Requirements and installation choices
+
+- A fresh Ubuntu VPS (or an Ubuntu server without an existing FaxingPro installation), root/sudo access, outbound internet, and enough disk capacity for Docker images, the database, and encrypted PDFs.
+- A domain/subdomain you own such as `fax.example.com`. Point its DNS **A** record at the VPS public IP; open inbound **TCP 80/443** when using automatic Caddy HTTPS. Keep your SSH access available.
+- Your **real Telnyx Ed25519 webhook verification public key** (32-byte Base64 or 64-character hex), from Telnyx Mission Control. The backend requires it even with sending disabled. Optionally provide the Telnyx API V2 secret, Fax Application ID and purchased US E.164 DID (`+1...`) during setup; missing items prevent the full ATLAS gateway setup wizard from completing.
+- **Choose `auto`** for a dedicated fresh VPS with free 80/443. **Choose `existing`** for a shared VPS that already runs Nginx, Caddy, Traefik, MooBee or other services. **Choose `none`** to use localhost only and configure HTTPS yourself. The installer will not modify an existing proxy.
+
+### 2. Download and run on a *new* Ubuntu VPS
+
+SSH into your VPS and execute:
 
 ~~~bash
-curl -fsSLo faxingpro-install.sh https://raw.githubusercontent.com/migtam628/FaxingPro/main/scripts/install-vps.sh
-less faxingpro-install.sh  # Review any root-level installer before execution.
+curl -fsSLo faxingpro-install.sh \
+  https://raw.githubusercontent.com/migtam628/FaxingPro/main/scripts/install-vps.sh
+
+# Review any downloaded root-level installer before execution.
+less faxingpro-install.sh
+
+# Guided installation (asks for hostname, proxy mode and Telnyx settings).
 sudo bash faxingpro-install.sh
 ~~~
 
-For shared VPS systems (existing Caddy/Nginx or MooBee services), use:
+Alternatively, visit the [latest GitHub Release](https://github.com/migtam628/FaxingPro/releases/latest), download **`faxingpro-install.sh`** and **`SHA256SUMS`**, and verify the installer checksum in their download directory before running:
+
+~~~bash
+grep '  faxingpro-install.sh$' SHA256SUMS | sha256sum -c -
+sudo bash faxingpro-install.sh
+~~~
+
+The release's `README.md` and `FaxingPro-Docs.zip` are offline reference materials. The release checksum file covers the published installers and documentation assets. **Do not execute a remote `curl | sudo bash` pipeline without inspecting what you downloaded.**
+
+For a **shared VPS with an existing reverse proxy**, choose the non-invasive mode:
 
 ~~~bash
 sudo bash faxingpro-install.sh --proxy existing --domain fax.example.com
 ~~~
 
-**Safety:** A real Telnyx webhook public key is mandatory, outbound sending stays disabled, and existing secrets/data volumes/proxies are not overwritten. Configure DNS, existing proxy routing, Telnyx webhook/DID, recovery identity and Google Drive OAuth separately. See [the complete VPS installation guide](docs/VPS_ONE_CLICK_INSTALL.md). The GitHub [Releases](https://github.com/migtam628/FaxingPro/releases) also bundle `faxingpro-install.sh` and checksums alongside the desktop installers. For installed systems, use `sudo bash /opt/faxingpro/scripts/install-vps.sh --update`.
+It leaves that existing proxy alone and binds the FaxingPro frontend to `127.0.0.1:8092` on the **host**. Route the hostname to that port from a **host-level reverse proxy**. If your reverse proxy runs inside Docker, its `127.0.0.1` means the proxy container, not the VPS: explicitly connect it to the `faxingpro-telnyx_default` network and forward to `faxingpro-telnyx-web-1:80`, or use another reviewed trusted network route.
+
+**Noninteractive administration:** supply `--yes --domain fax.example.com --proxy auto` and the environment variable `FAXINGPRO_TELNYX_PUBLIC_KEY`; optional Telnyx variables are `FAXINGPRO_TELNYX_API_KEY`, `FAXINGPRO_TELNYX_APP_ID`, and `FAXINGPRO_TELNYX_FROM_NUMBER`. Use a secret-aware provisioner, not an exposed shell command or shared terminal history, for private Telnyx keys.
+
+### 3. What the installer creates and what it leaves untouched
+
+| Component | New installation behavior |
+| --- | --- |
+| Docker Engine + Compose | Reused when healthy; otherwise installed from the official Docker Ubuntu APT repository |
+| FaxingPro application | Cloned into `/opt/faxingpro` unless `--dir /absolute/path` is specified |
+| Database and fax files | Persistent Compose-managed PostgreSQL and encrypted-document Docker volumes |
+| Credentials | Four locally generated distinct 64-character hex values: `DB_PASSWORD`, `API_TOKEN`, `MEDIA_SIGNING_SECRET`, `STORAGE_ENCRYPTION_KEY` |
+| Protected settings | `deployment/telnyx/.env` (mode 0600) and a local installer proxy profile |
+| Network and HTTPS | Web listens at `127.0.0.1:8092` by default; optional standalone Caddy only if 80/443 are free |
+| Sending safety | `SEND_ENABLED=false`, `TEST_DESTINATION` blank; never enables arbitrary outbound faxing |
+| Validation | Checks Docker Compose configuration, builds/starts containers and waits for local `/healthz` |
+| Existing installations | Refuses to overwrite an existing target checkout or detected FaxingPro data volumes |
+
+**Do not run a fresh install over an existing FaxingPro directory, even if your current version is behind.** Do not use `docker compose down -v`, delete persistent volumes, or regenerate `STORAGE_ENCRYPTION_KEY`; that would risk losing access to saved documents.
+
+### 4. Finish setup after the installer
+
+1. Verify DNS and HTTPS at `https://YOUR-FAX-HOST`. For `auto` mode, Caddy can only issue a certificate when DNS points to the VPS and public 80/443 reach the server. For `existing` mode, configure routing in your existing reverse proxy without replacing its other sites.
+2. Privately retrieve the generated operator token **on the VPS** (do not paste it into GitHub or chat):
+
+   ~~~bash
+   sudo grep '^API_TOKEN=' /opt/faxingpro/deployment/telnyx/.env
+   ~~~
+
+3. Open the actual **HTTPS** ATLAS website, sign in using the operator token, verify the Telnyx readiness checks, and complete the workspace setup. Never sign in on the public GitHub Pages marketing site.
+4. In Telnyx Mission Control, create/configure your Programmable Fax application, attach the purchased DID and outbound profile, and set the webhook endpoint to `https://YOUR-FAX-HOST/webhooks/telnyx` **only after HTTPS and webhook-signature security have been verified**.
+5. Test with a benign incoming fax and confirm the encrypted PDF is accessible. Outbound remains locked until you deliberately configure `SEND_ENABLED` and a single explicitly authorized `TEST_DESTINATION`; the installer does **not** change these controls.
+6. Configure encrypted database/document/configuration backups and Google Drive offsite copies separately (next section).
+
+### 5. Health checks, safe updates and troubleshooting
+
+New installations in the default directory:
+
+~~~bash
+sudo bash /opt/faxingpro/scripts/install-vps.sh --status
+sudo bash /opt/faxingpro/scripts/install-vps.sh --update
+~~~
+
+The `--update` command fast-forwards the existing Git checkout and rebuilds **only** the web and API services. It does **not** replace `.env`, erase PostgreSQL or PDF volumes, delete backups, or change other deployed websites. Take an encrypted backup and verify its offsite copy before major upgrades.
+
+For an older installation such as `/root/FaxingPro`, pass the actual existing path; **do not run a fresh install**:
+
+~~~bash
+sudo bash /root/FaxingPro/scripts/install-vps.sh --update --dir /root/FaxingPro
+~~~
+
+The script also supports `--check` (read-only host checks), `--self-test` (local input-guard tests), and `--port 9092` on *new* installs if 8092 is already in use. For diagnostics:
+
+~~~bash
+curl -fsS http://127.0.0.1:8092/healthz
+
+cd /opt/faxingpro
+docker compose -f deployment/telnyx/compose.yaml \
+  --env-file deployment/telnyx/.env ps
+
+docker compose -f deployment/telnyx/compose.yaml \
+  --env-file deployment/telnyx/.env logs --tail=60 api web
+~~~
+
+If the website does not open, check its DNS A record, 80/443 firewall rules, TLS provisioning, and reverse-proxy routing first. If `/healthz` fails, inspect API logs and ensure your Telnyx public webhook key is correctly formatted. If the server already has another FaxingPro installation or occupied 80/443, use `--update` or `--proxy existing` rather than replacing working services.
+
+### 6. Daily encrypted backups and Google Drive
+
+A reliable recovery requires **all three**: PostgreSQL database, encrypted PDF volume, **and the original storage encryption key**. Generate an `age` recovery identity **on another trusted computer**, keep its *private* half off the VPS, and use only its public `age1...` recipient with the server backup scripts.
+
+~~~bash
+# On the VPS after configuring an age public recipient and installing age:
+cd /opt/faxingpro
+export FAXINGPRO_AGE_RECIPIENT='age1YOUR_REAL_PUBLIC_RECIPIENT'
+bash scripts/faxingpro-backup.sh
+
+# Only after a backup was copied and verified on a separate device:
+bash scripts/install-faxingpro-backup-timer.sh --check
+bash scripts/install-faxingpro-backup-timer.sh --install
+unset FAXINGPRO_AGE_RECIPIENT
+~~~
+
+**Google Drive:** Configure a dedicated Google Drive rclone OAuth remote named `faxingpro-drive` using your own Google OAuth client, then connect it with:
+
+~~~bash
+cd /opt/faxingpro
+bash scripts/install-faxingpro-drive.sh --check
+bash scripts/install-faxingpro-drive.sh --install
+bash scripts/faxingpro-drive-upload.sh --upload-pending
+~~~
+
+The backup scripts transfer **only age-encrypted archives**, verify uploaded checksums and preserve local files. They do not delete old backups. Google Drive transfer verification is **not** proof of a successful recovery: rehearse restoration on an **isolated staging VPS**. Never upload your `age` private identity, `rclone.conf`, or unencrypted `.env` to GitHub or support chats.
+
+For detailed backup recovery and Google OAuth headless authorization, use [Backup & Recovery](docs/BACKUP_RECOVERY.md), [Google Drive setup](docs/GOOGLE_DRIVE_BACKUPS.md), and [VPS installer reference](docs/VPS_ONE_CLICK_INSTALL.md).
+
+### 7. Desktop builds are clients, not VPS servers
+
+GitHub Releases also supplies a Windows NSIS installer, macOS Intel/Apple silicon DMGs, and Linux AppImage/DEB packages. They are **unsigned preview desktop clients**: on first launch, enter the URL of your own deployed HTTPS FaxingPro VPS. A desktop installer alone does **not** set up Telnyx, PostgreSQL, or an internet-reachable fax service.
 
 ## Deployment: Docker and Telnyx
 
