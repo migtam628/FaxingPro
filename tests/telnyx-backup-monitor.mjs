@@ -14,4 +14,12 @@ assert.ok(info.ageHours>=0&&info.ageHours<=1);
 assert.equal(info.scheduleVerified,false);
 assert.equal(info.offsiteVerified,false);
 assert.equal(info.runs.length,1);
+const noticeResponse=await fetch(base+'/api/notifications',{
+  headers:{Authorization:'Bearer '+env.API_TOKEN}
+});
+assert.equal(noticeResponse.status,200);
+const notifications=await noticeResponse.json();
+assert.ok(!notifications.items.some(item=>item.kind==='backup'),
+  'New local backup should not trigger overdue/Drive-missing alerts during initial two-hour upload window');
+
 console.log('PASS: encrypted archive creation is recorded and recent, without misreporting timer or offsite status');
