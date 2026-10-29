@@ -1,0 +1,30 @@
+.api-token-manager{border-top:1px solid #e4ebf0;margin-top:24px;padding-top:24px;display:grid;gap:16px}
+.api-token-heading,.api-token-list-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.api-token-heading h3{margin:5px 0;font-size:19px}.api-token-heading p{margin:5px 0;color:#637f91;font-size:12px;line-height:1.7}
+.api-token-warning{display:flex;gap:13px;border:1px solid #cfebe4;background:#f5fbf9;border-radius:10px;padding:14px;font-size:12px;line-height:1.7;color:#33695f}
+.api-token-warning svg{color:#0c9783;flex-shrink:0}
+.api-token-form{border:1px solid #e4ecf0;border-radius:12px;padding:20px;display:grid;gap:16px}
+.api-token-form-row{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+.api-token-form label{display:grid;gap:8px;font-size:12px;font-weight:700}
+.api-token-form input:not([type=checkbox]),.api-token-form select,.api-token-reveal input{border:1px solid #d5e1ea;border-radius:8px;padding:12px;font:inherit;min-width:0}
+.api-token-scope-grid{display:grid;gap:8px}
+.api-token-form .api-token-scope{display:flex;gap:12px;padding:12px;border:1px solid #e8eef2;border-radius:9px;align-items:start;cursor:pointer}
+.api-token-scope input{margin-top:4px}.api-token-scope>span{display:grid;gap:4px}
+.api-token-scope small,.api-token-row small{color:#8094a6;font-size:11px;line-height:1.5}
+.api-token-form>.btn{justify-self:start}
+.api-token-reveal{border:1px solid #9ad9c9;background:#effaf6;padding:16px;border-radius:11px;display:grid;gap:12px}
+.api-token-reveal-title{display:flex;align-items:center;gap:9px;color:#157c69}
+.api-token-reveal-title .icon-btn{margin-left:auto}
+.api-token-reveal input{font-family:ui-monospace,monospace}
+.api-token-reveal .btn{justify-self:start}.api-token-reveal small{color:#427c70}
+.api-token-error,.api-token-notice{padding:11px 13px;border-radius:8px;margin:0;background:#fff3f1;color:#a6413d;font-size:12px}
+.api-token-notice{background:#e6f7f0;color:#157f69}
+.api-token-list-heading h4{margin:0}.api-token-list-heading span{font-size:12px;color:#708a9a}
+.api-token-empty{padding:30px;text-align:center;display:grid;justify-items:center;color:#839aaa}
+.api-token-list{display:grid;border:1px solid #e4ebf0;border-radius:10px;overflow:hidden}
+.api-token-row{display:flex;align-items:center;gap:14px;padding:16px;border-bottom:1px solid #e8eef2}
+.api-token-row:last-child{border-bottom:0}.api-token-row>svg{color:#139786;flex-shrink:0}
+.api-token-row>div{flex:1;min-width:0;display:grid;gap:4px;overflow-wrap:anywhere}
+.api-token-row strong{font-size:13px}
+@media(max-width:650px){.api-token-form-row{grid-template-columns:1fr}.api-token-heading{align-items:start;flex-wrap:wrap}
+.api-token-row{flex-wrap:wrap}.api-token-row>div{width:calc(100% - 40px);flex:auto}}
