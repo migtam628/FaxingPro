@@ -73,7 +73,9 @@ const integrationScope=(method,p)=>{
 const authContext=async(req,p)=>{
   const bearer=(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
   if(tokenMatches(bearer))return {kind:'operator'};
-  if(await currentSession(req))return {kind:'operator'};
+  // When an Authorization header is supplied, never silently escalate its
+  // permissions using an unrelated browser cookie.
+  if(!req.headers.authorization && await currentSession(req))return {kind:'operator'};
   if(!/^fpx_[A-Za-z0-9_-]{43}$/.test(bearer))return null;
   const required=integrationScope(req.method,p);
   if(!required)return {kind:'restricted'};
