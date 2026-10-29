@@ -10,6 +10,42 @@ The backend records login successes, the first eight failures in each window, lo
 
 ATLAS → **Security** now shows active browser session counts and the latest security events, and includes an explicit confirmation step for **Sign out all sessions**. This revokes all database-backed sessions (including your current browser) and requires the existing `API_TOKEN` to sign in again. Automation scripts using the API_TOKEN as a Bearer token remain authorized; revoke or rotate that secret separately when needed.
 
+
+## API Token Manager (read-only integration credentials)
+
+Open **ATLAS → Security → API tokens** while signed in as the primary operator. This is a separate feature from the `.env` master `API_TOKEN`.
+
+1. Choose a descriptive name (for example `Reports dashboard`), read-only scopes, and 7/30/90-day expiration.
+2. Click **Generate read-only token**. Copy the `fpx_...` credential **once** and save it in your private password manager. Do not paste it in chat, CI logs, browser developer console or source control.
+3. Supply the token only as `Authorization: Bearer fpx_...` when calling your trusted HTTPS FaxingPro host. The token's scope is checked on every request, and use updates `last_used_at`.
+4. Later, use **Revoke** in ATLAS. Revocation immediately disables that integration token. Creation and revocation are auditable operator events. An expired token is unusable even before it is deleted.
+
+| Scope | Allowed GET operations |
+| --- | --- |
+| `faxes:read` | `/api/faxes`, `/api/stats`, `/api/faxes/:id/events` |
+| `contacts:read` | `/api/contacts` |
+| `reports:read` | `/api/reports/daily` |
+
+Integration tokens never authorize document/PDF decryption, editing contacts, sending faxes, downloading backups, managing keys, changing settings, or logging in to ATLAS. Every token has a random 32-byte secret with a `fpx_` prefix; the database saves its SHA-256 hash only. List responses show metadata and a partial prefix, never the original secret. There are at most 10 concurrently active tokens.
+
+**Administrator-only operations**: `GET /api/tokens` lists token metadata; `POST /api/tokens` creates a token once and returns the original secret in that one response; `DELETE /api/tokens/:id` revokes it. Mutating API-token requests require the `X-FaxingPro-Action: token-manager` header, to add an anti-CSRF barrier for browser sessions. The backend rejects unauthorized origins. If an `Authorization` header explicitly supplies an integration token, the server will not escalate it using a simultaneously present operator cookie.
+
+**Master administrator token rotation** remains a VPS-only operation. Example for an existing installation in `~/FaxingPro`:
+
+~~~bash
+cd ~/FaxingPro
+openssl rand -hex 32
+# Privately store the new value and replace only API_TOKEN in the protected .env.
+sudo nano deployment/telnyx/.env
+docker compose -f deployment/telnyx/compose.yaml \
+  --env-file deployment/telnyx/.env up -d --no-deps --force-recreate api
+curl -fsS https://fax.mttechservicesllc.com/healthz
+~~~
+
+Changing the master token invalidates existing browser sessions because session validation checks its fingerprint. **It does not delete or rotate previously generated integration tokens**—revoke those individually if compromise is suspected. Changing `STORAGE_ENCRYPTION_KEY` is a separate, potentially destructive recovery-key migration and must never be used as a routine login-token rotation.
+
+**Current limitations:** No MFA, individual named user accounts, delegated write scopes, automatic secrets rotation, or per-user role assignments. This remains a single-operator pilot. A full production deployment requires layered edge/rate protections, audit retention, tested recovery and a security review.
+
 ## Deploy the update
 
 In `root@mttech-vps`:
