@@ -8,6 +8,7 @@ import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight,
   type LucideIcon } from 'lucide-react';
 import SetupWizard from './SetupWizard';
 import NotificationCenter from './NotificationCenter';
+import ReconciliationPanel from './ReconciliationPanel';
 import ContactsManager from './ContactsManager';
 import PublicLanding from './PublicLanding';
 import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, getSecurityStatus, revokeAllSessions, setFaxFlag, getFaxEvents, getDailyActivity, downloadFax, submitFax, type DailyActivity, type FaxEvent, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus, type SecurityStatus } from './api';
@@ -378,6 +379,7 @@ export default function App(){
       </>}
       {(page==='inbox'||page==='sent'||page==='documents'||page==='queue'||page==='archive')&&<>
         <div className="page-heading"><div><span className="eyebrow">FAX MANAGEMENT</span><h1>{titleFor(page)}</h1><p>{page==='inbox'?'Manage your incoming fax documents.':page==='sent'?'Track your outgoing fax transmissions.':page==='queue'?'Monitor transmissions that need processing or attention.':page==='archive'?'Archived transmissions are retained with their original documents.':'Search and organize real fax history.'}</p></div><button className="btn primary" onClick={()=>navigate('compose')}><Plus size={18}/> New Fax</button></div>
+        {page==='queue'&&<ReconciliationPanel endpoint={apiEndpoint}/>}
         <div className="content-panel">
           <div className="table-toolbar"><div className="tabs"><button className={'tab '+(!unreadOnly?'active-tab':'')}
             onClick={()=>setUnreadOnly(false)}>All records</button>

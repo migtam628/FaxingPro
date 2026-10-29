@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { randomUUID, sign, createPrivateKey } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 const env=Object.fromEntries(readFileSync('deployment/telnyx/.env','utf8')
   .split('\n').filter(s=>s&&!s.startsWith('#')&&s.includes('='))
@@ -170,6 +171,47 @@ assert.equal(timelineEvents.filter(e=>e.type==='fax.received').length,1,
 assert.ok(timelineEvents.some(e=>e.type==='fax.failed'),
   'Out-of-order events remain visible for operator reconciliation');
 
+
+// The reconciliation queue is read-only and must not infer that an unknown
+// provider response failed. Synthetic rows exist only in this isolated CI DB.
+assert.equal((await request('/api/reconciliation')).status,401);
+const emptyReview=await request('/api/reconciliation',{headers:auth});
+assert.equal(emptyReview.status,200);
+assert.deepEqual((await emptyReview.json()).items,[]);
+const unknownId=randomUUID(),stalledId=randomUUID(),recentId=randomUUID();
+const deliveredId=randomUUID(),unknownProviderId=randomUUID();
+const insertSql=`INSERT INTO faxes(id,telnyx_id,direction,status,from_number,to_number,title,updated_at,last_event_at)
+ VALUES
+ ('${unknownId}','${unknownProviderId}','outbound','unknown','+13055551234','+13055559876','Unknown CI fax',now(),now()),
+ ('${stalledId}',NULL,'outbound','queued','+13055551234','+13055559876','Stalled CI fax',now()-interval '45 minutes',now()-interval '45 minutes'),
+ ('${recentId}',NULL,'outbound','queued','+13055551234','+13055559876','Recent CI fax',now(),now()),
+ ('${deliveredId}',NULL,'outbound','delivered','+13055551234','+13055559876','Delivered CI fax',now()-interval '45 minutes',now()-interval '45 minutes')`;
+execFileSync('docker',['compose','-f','deployment/telnyx/compose.yaml','--env-file','deployment/telnyx/.env',
+  'exec','-T','db','psql','-U','faxingpro','-d','faxingpro','-v','ON_ERROR_STOP=1','-c',insertSql],
+  {stdio:'pipe'});
+const correlated=await sendSignedEvent('fax.queued',new Date(Date.now()-3600000).toISOString(),
+  {fax_id:unknownProviderId},'outbound');
+assert.equal(correlated.status,200);
+const reviewResponse=await request('/api/reconciliation',{headers:cookieHeader});
+assert.equal(reviewResponse.status,200);
+const review=await reviewResponse.json();
+assert.equal(review.readOnly,true);
+assert.equal(review.staleAfterMinutes,30);
+assert.equal(review.limit,50);
+assert.ok(review.items.some(x=>x.id===unknownId&&x.status==='unknown'));
+assert.ok(review.items.some(x=>x.id===stalledId));
+assert.ok(!review.items.some(x=>x.id===recentId));
+assert.ok(!review.items.some(x=>x.id===deliveredId));
+const unknownReview=review.items.find(x=>x.id===unknownId);
+assert.equal(unknownReview.telnyxId,unknownProviderId);
+assert.equal(unknownReview.events.length,1);
+assert.equal(unknownReview.events[0].type,'fax.queued');
+assert.ok(unknownReview.events[0].receivedAt);
+assert.equal((await request('/api/reconciliation',{method:'POST',headers:auth})).status,405);
+const stillUnknown=(await (await request('/api/faxes?folder=all',{headers:auth})).json())
+  .items.find(x=>x.id===unknownId);
+assert.equal(stillUnknown.status,'unknown','Reconciliation must not change fax status');
+
 assert.equal(faxRecord.readAt,null);
 assert.equal((await request('/api/notifications')).status,401);
 assert.equal((await request('/api/notifications/preferences')).status,401);
@@ -255,4 +297,4 @@ const bad=await request('/webhooks/telnyx',{method:'POST',headers:{'Content-Type
 assert.equal(bad.status,401);
 const send=await request('/api/faxes',{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:'{}'});
 assert.equal(send.status,503,'Outbound must remain locked');
-console.log('PASS: webhook replay/out-of-order/terminal metadata safety, authenticated notification preferences, real unread alerts, contacts, fax archives, signed events, 30-day reports, backups, login throttling and safety restrictions');
+console.log('PASS: read-only outbound reconciliation, webhook replay/out-of-order/terminal metadata safety, authenticated notification preferences, real unread alerts, contacts, fax archives, signed events, 30-day reports, backups, login throttling and safety restrictions');

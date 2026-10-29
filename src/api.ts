@@ -25,6 +25,19 @@ export async function getFaxEvents(endpoint:string,id:string):Promise<FaxEvent[]
   return (await apiCall<{events:FaxEvent[]}>(endpoint,'','/api/faxes/'+encodeURIComponent(id)+'/events')).events;
 }
 
+export type ReconciliationEvent = {type:string;occurredAt:string;receivedAt:string};
+export type ReconciliationItem = {
+  id:string;telnyxId:string|null;clientKey:string|null;status:string;title:string;
+  from:string;to:string;createdAt:string;updatedAt:string;lastEventAt:string|null;
+  failureReason:string|null;reviewReason:string;events:ReconciliationEvent[];
+};
+export type ReconciliationFeed = {
+  readOnly:true;staleAfterMinutes:number;limit:number;notice:string;items:ReconciliationItem[];
+};
+export function getReconciliation(endpoint:string):Promise<ReconciliationFeed>{
+  return apiCall<ReconciliationFeed>(endpoint,'','/api/reconciliation');
+}
+
 export type FaxContact = {id:string;name:string;number:string;email:string;company:string;notes:string;createdAt:string;updatedAt:string};
 export type ContactInput = Pick<FaxContact,'name'|'number'|'email'|'company'|'notes'>;
 export async function getContacts(endpoint:string,query=''):Promise<FaxContact[]>{

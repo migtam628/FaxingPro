@@ -472,6 +472,46 @@ const app=http.createServer(async(req,res)=>{
         }
         return output(res,405,{error:'Method not allowed'},{Allow:'PATCH, DELETE'});
       }
+      // Manual reconciliation is intentionally read-only: no Telnyx API requests,
+      // status changes, retries, or changes to outbound authorization.
+      if(p==='/api/reconciliation'){
+        if(req.method!=='GET')return output(res,405,{error:'Method not allowed'},{Allow:'GET'});
+        const {rows}=await db.query(
+          "SELECT id,telnyx_id,client_key,status,title,from_number,to_number,"+
+          "created_at,updated_at,last_event_at,failure_reason FROM faxes "+
+          "WHERE direction='outbound' AND (status='unknown' OR "+
+          "(status IN ('submitting','queued','sending') AND "+
+          "updated_at<now()-interval '30 minutes')) "+
+          "ORDER BY updated_at ASC,id ASC LIMIT 50");
+        const providerIds=rows.map(r=>r.telnyx_id).filter(Boolean);
+        let history=[];
+        if(providerIds.length){
+          const result=await db.query(
+            'SELECT h.fax_id,h.event_type AS type,h.occurred_at AS "occurredAt",'+
+            'h.received_at AS "receivedAt" FROM unnest($1::text[]) AS ids(fax_id) '+
+            'CROSS JOIN LATERAL (SELECT fax_id,event_type,occurred_at,received_at '+
+            'FROM webhook_events WHERE fax_id=ids.fax_id '+
+            'ORDER BY occurred_at DESC,received_at DESC LIMIT 20) AS h',
+            [providerIds]);
+          history=result.rows;
+        }
+        return output(res,200,{
+          readOnly:true,staleAfterMinutes:30,limit:50,
+          notice:'Check provider activity manually before any new submission. No fax is resent or changed.',
+          items:rows.map(r=>({
+            id:r.id,telnyxId:r.telnyx_id,clientKey:r.client_key,
+            status:r.status,title:r.title,from:r.from_number,to:r.to_number,
+            createdAt:r.created_at,updatedAt:r.updated_at,lastEventAt:r.last_event_at,
+            failureReason:r.failure_reason,
+            reviewReason:r.status==='unknown'
+              ?'Submission outcome unknown; check Telnyx activity before any new attempt.'
+              :'No confirmed update for at least 30 minutes; check Telnyx activity.',
+            events:history.filter(event=>event.fax_id===r.telnyx_id).map(event=>({
+              type:event.type,occurredAt:event.occurredAt,receivedAt:event.receivedAt
+            }))
+          }))
+        });
+      }
       if(req.method==='GET'&&p==='/api/faxes'){
         const limit=Math.min(250,Math.max(1,Number(url.searchParams.get('limit')||100)||100));
         const offset=Math.min(100000,Math.max(0,Number(url.searchParams.get('offset')||0)||0));

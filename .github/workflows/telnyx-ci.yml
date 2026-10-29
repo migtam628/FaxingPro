@@ -16,6 +16,7 @@ on:
       - 'tests/prepare-telnyx-ci.mjs'
       - 'src/api.ts'
       - 'src/App.tsx'
+      - 'src/ReconciliationPanel.tsx'
       - 'src/ContactsManager.tsx'
       - 'src/NotificationCenter.tsx'
       - 'src/PublicLanding.tsx'
