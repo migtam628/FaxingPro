@@ -4,7 +4,9 @@ import {Bell,RefreshCw,ShieldCheck,AlertTriangle,FileText,Settings2,X} from 'luc
 import {getNotifications,getNotificationPreferences,setNotificationPreferences,
   type FaxNotificationFeed} from './api';
 
-export default function NotificationCenter({endpoint,onOpen}:{endpoint:string;onOpen:(faxId:string)=>void}){
+export default function NotificationCenter({endpoint,onOpen,onBackup}:{
+  endpoint:string;onOpen:(faxId:string)=>void;onBackup:()=>void;
+}){
   const [open,setOpen]=useState(false);
   const [feed,setFeed]=useState<FaxNotificationFeed>({items:[],total:0});
   const [browserEnabled,setBrowserEnabled]=useState(false);
@@ -22,12 +24,13 @@ export default function NotificationCenter({endpoint,onOpen}:{endpoint:string;on
         for(const item of result.items){
           if(known.current.has(item.id+':'+item.kind))continue;
           const alert=new Notification('FaxingPro · '+item.title,{body:item.description+' · '+item.number,tag:'fax-'+item.id});
-          alert.onclick=()=>{window.focus();onOpen(item.faxId);alert.close();};
+          alert.onclick=()=>{window.focus();if(item.kind==='backup')onBackup();
+            else if(item.faxId)onOpen(item.faxId);alert.close();};
         }
       }
       known.current=ids;setFeed(result);setError('');
     }catch(e){setError(e instanceof Error?e.message:'Unable to retrieve notifications');}
-  },[endpoint,onOpen]);
+  },[endpoint,onOpen,onBackup]);
   useEffect(()=>{
     getNotificationPreferences(endpoint).then(p=>setBrowserEnabled(p.browserEnabled)).catch(()=>{});
   },[endpoint]);
@@ -59,19 +62,19 @@ export default function NotificationCenter({endpoint,onOpen}:{endpoint:string;on
         <button className="icon-btn" aria-label="Close notifications" onClick={()=>setOpen(false)}><X size={17}/></button></div>
       <div className="notification-scroll">
         {feed.items.length?feed.items.map(item=><button className="notification-item" key={item.id+item.kind}
-          onClick={()=>{onOpen(item.faxId);setOpen(false);}}>
+          onClick={()=>{if(item.kind==='backup')onBackup();else if(item.faxId)onOpen(item.faxId);setOpen(false);}}>
           <span className={'notification-kind '+(item.kind==='failed'?'notification-failed':'')}>
-            {item.kind==='failed'?<AlertTriangle size={18}/>:<FileText size={18}/>}</span>
+            {item.kind==='failed'||item.kind==='backup'?<AlertTriangle size={18}/>:<FileText size={18}/>}</span>
           <span><strong>{item.title}</strong><small>{item.description} · {item.number}</small>
             <small>{new Date(item.createdAt).toLocaleString()}</small></span></button>):
-          <div className="notification-empty"><ShieldCheck size={25}/>No unread inbound faxes or failed transmissions.</div>}
+          <div className="notification-empty"><ShieldCheck size={25}/>No unresolved fax or backup alerts.</div>}
       </div>
       {error&&<p role="alert" className="notification-error">{error}</p>}
       <div className="notification-footer"><button onClick={()=>{setLoading(true);void refresh().finally(()=>setLoading(false));}}
         disabled={loading}><RefreshCw size={14}/> Refresh</button>
         <button onClick={()=>void toggleAlerts()} disabled={saving}><Settings2 size={14}/>
           {browserEnabled?'Turn off desktop alerts':'Enable desktop alerts'}</button></div>
-      <p className="notification-footnote">Based only on saved fax records. Polls every 60 seconds; not a real-time push service. Desktop alerts require your permission.</p>
+      <p className="notification-footnote">Based on saved fax and local backup records, not live Google Drive connectivity. Polls every 60 seconds. Desktop alerts require permission.</p>
     </section>}
   </div>;
 }
