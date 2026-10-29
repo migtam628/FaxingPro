@@ -69,6 +69,74 @@ assert.equal(setupResult.workspaceName,'FaxingPro Business');
 assert.equal((await (await request('/api/setup',{headers:cookieHeader})).json()).complete,true);
 assert.equal((await request('/api/setup')).status,401);
 
+const headerTokenAction={'X-FaxingPro-Action':'token-manager','Content-Type':'application/json'};
+assert.equal((await request('/api/tokens')).status,401);
+assert.equal((await request('/api/tokens',{headers:auth})).status,200);
+const tokenListBefore=await (await request('/api/tokens',{headers:auth})).json();
+assert.equal(tokenListBefore.items.length,0);
+assert.equal((await request('/api/tokens',{method:'POST',headers:{...auth,'Content-Type':'application/json'},
+  body:JSON.stringify({name:'Readonly Client',scopes:['faxes:read'],expiresInDays:7})})).status,403,
+  'Creation must reject requests lacking the anti-CSRF action header');
+assert.equal((await request('/api/tokens',{method:'POST',headers:{...auth,...headerTokenAction},
+  body:JSON.stringify({name:'Unsafe Write',scopes:['faxes:write'],expiresInDays:90})})).status,400);
+assert.equal((await request('/api/tokens',{method:'POST',headers:{...auth,...headerTokenAction},
+  body:JSON.stringify({name:'Duplicate Scope',scopes:['faxes:read','faxes:read'],expiresInDays:30})})).status,400);
+const generated=await request('/api/tokens',{method:'POST',headers:{...cookieHeader,...headerTokenAction},
+  body:JSON.stringify({name:'Fax dashboard reader',scopes:['faxes:read'],expiresInDays:7})});
+assert.equal(generated.status,201);
+const integration=await generated.json();
+assert.match(integration.token,/^fpx_[A-Za-z0-9_-]{43}$/);
+assert.deepEqual(integration.scopes,['faxes:read']);
+assert.ok(integration.prefix.length<=12);
+const limited={Authorization:'Bearer '+integration.token};
+assert.equal((await request('/api/faxes',{headers:limited})).status,200);
+assert.equal((await request('/api/stats',{headers:limited})).status,200);
+assert.equal((await request('/api/contacts',{headers:limited})).status,403);
+assert.equal((await request('/api/reports/daily',{headers:limited})).status,403);
+assert.equal((await request('/api/backup/status',{headers:limited})).status,403);
+assert.equal((await request('/api/security',{headers:limited})).status,403);
+assert.equal((await request('/api/tokens',{headers:limited})).status,403);
+assert.equal((await request('/api/sessions',{method:'DELETE',headers:limited})).status,403);
+assert.equal((await request('/api/tokens',{method:'POST',headers:{...limited,...headerTokenAction},
+  body:JSON.stringify({name:'Escalation',scopes:['faxes:read'],expiresInDays:7})})).status,403);
+assert.equal((await request('/api/faxes',{method:'POST',headers:{
+  ...limited,'Content-Type':'application/json'},body:'{}'})).status,403);
+assert.equal((await request('/api/faxes',{headers:{...limited,...cookieHeader}})).status,200);
+assert.equal((await request('/api/contacts',{headers:{...limited,...cookieHeader}})).status,403,
+  'Admin cookie must not elevate explicit restricted Authorization header');
+const listAfterCreate=await (await request('/api/tokens',{headers:auth})).json();
+assert.equal(listAfterCreate.items.length,1);
+assert.equal(listAfterCreate.items[0].name,'Fax dashboard reader');
+assert.ok(listAfterCreate.items[0].lastUsedAt);
+assert.equal(JSON.stringify(listAfterCreate).includes(integration.token),false,
+  'List response must never expose integration secrets');
+const revokeId=integration.id;
+assert.equal((await request('/api/tokens/'+revokeId,{method:'DELETE',headers:auth})).status,403);
+assert.equal((await request('/api/tokens/'+revokeId,{method:'DELETE',
+  headers:{...cookieHeader,'X-FaxingPro-Action':'token-manager'}})).status,200);
+assert.equal((await request('/api/faxes',{headers:limited})).status,403);
+assert.equal((await request('/api/tokens/'+revokeId,{method:'DELETE',
+  headers:{...auth,'X-FaxingPro-Action':'token-manager'}})).status,404);
+const reportsCreate=await request('/api/tokens',{method:'POST',headers:{...auth,...headerTokenAction},
+  body:JSON.stringify({name:'Report service',scopes:['reports:read'],expiresInDays:7})});
+assert.equal(reportsCreate.status,201);
+const reportToken=await reportsCreate.json();
+const reportAuth={Authorization:'Bearer '+reportToken.token};
+assert.equal((await request('/api/reports/daily',{headers:reportAuth})).status,200);
+assert.equal((await request('/api/faxes',{headers:reportAuth})).status,403);
+execFileSync('docker',['compose','-f','deployment/telnyx/compose.yaml',
+  '--env-file','deployment/telnyx/.env','exec','-T','db','psql','-U','faxingpro','-d','faxingpro',
+  '-v','ON_ERROR_STOP=1','-c',
+  "UPDATE api_tokens SET expires_at=now()-interval '1 minute' WHERE id='"+reportToken.id+"'"],
+  {stdio:'pipe'});
+assert.equal((await request('/api/reports/daily',{headers:reportAuth})).status,403,
+  'Integration token must become unusable immediately on expiration');
+const finalList=await (await request('/api/tokens',{headers:auth})).json();
+assert.equal(finalList.items.length,2);
+assert.equal(finalList.items.find(t=>t.id===revokeId).revokedAt!==null,true);
+assert.equal(JSON.stringify(finalList).includes(reportToken.token),false);
+
+
 
 const faxId=randomUUID(),eventId=randomUUID();
 const obj={data:{id:eventId,event_type:'fax.receiving.started',
@@ -297,4 +365,4 @@ const bad=await request('/webhooks/telnyx',{method:'POST',headers:{'Content-Type
 assert.equal(bad.status,401);
 const send=await request('/api/faxes',{method:'POST',headers:{...auth,'Content-Type':'application/json'},body:'{}'});
 assert.equal(send.status,503,'Outbound must remain locked');
-console.log('PASS: read-only outbound reconciliation, webhook replay/out-of-order/terminal metadata safety, authenticated notification preferences, real unread alerts, contacts, fax archives, signed events, 30-day reports, backups, login throttling and safety restrictions');
+console.log('PASS: read-only integration scopes, token revocation, expiration, secret safety, outbound reconciliation, webhook replay/out-of-order/terminal metadata safety, authenticated notification preferences, real unread alerts, contacts, fax archives, signed events, 30-day reports, backups, login throttling and safety restrictions');
