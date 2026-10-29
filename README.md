@@ -30,6 +30,7 @@
 | Webhook event timelines | Implemented in v0.7 | Recorded Telnyx webhook event timestamps per fax; no synthetic event history |
 | 30-day daily report | Implemented in v0.7 | UTC daily incoming/outgoing/failed counts from PostgreSQL with recent-activity visualization |
 | Fax notification center | Implemented in v0.8 | Real unread inbound and failed transmission alerts, 60-second polling, opt-in browser notifications, stored preferences |
+| Backup-health alerts | Implemented in v0.8 | Warn on no recorded archive, latest local archive over 36 hours old, or missing latest Drive checksum record after 2 hours; no deletions or cloud connectivity claims |
 | Manual outbound reconciliation | Implemented in v0.8 (read-only) | Authenticated queue review for unknown or stalled outbound jobs with correlated signed webhook history; never retries or changes status |
 | Sessions and security history | Implemented | Seven-day secure cookie, failed-login throttling, session counts, revoke-all and operator audit |
 | Read-only integration API Token Manager | Implemented in v0.8 | Operator-only create/list/revoke, hashed credentials, 7/30/90-day expiry, last use and scoped permissions |
@@ -50,7 +51,7 @@ ATLAS provides Dashboard, Inbox, Sent Faxes, New Fax, Contacts, Documents, Archi
 
 **Queue reconciliation:** Job Queue includes an authenticated, read-only review of outbound submissions with unknown outcomes and jobs that have not updated for at least 30 minutes. It shows the FaxingPro ID, Telnyx ID when available, recipient, timestamps and up to 20 recorded signed webhook events per candidate. The endpoint is `GET /api/reconciliation` (up to 50 oldest review candidates); no Telnyx lookup, resend, acknowledgement, status change, or expanded sending permission occurs. An empty list does not guarantee that every fax has been delivered. See [manual reconciliation guide](docs/WEBHOOK_RELIABILITY.md).
 
-**Notifications:** The bell in ATLAS displays actual unread incoming faxes and failed transmissions. The operator can open the corresponding fax, refresh alerts, and opt into desktop notifications with browser permission. FaxingPro polls every 60 seconds; this is **not instantaneous server push**. No third-party notification services or fake activity feed are used.
+**Notifications:** The bell in ATLAS displays actual unread incoming faxes, failed transmissions and backup-health warnings. The operator can open the corresponding fax or navigate to Backup & Recovery, refresh alerts, and opt into desktop notifications with browser permission. FaxingPro polls every 60 seconds; this is **not instantaneous server push**. Local backup warnings use PostgreSQL records: no backup completed, the latest archive more than 36 hours old, or no Google Drive checksum record for the newest local archive after 2 hours. **These alerts do not probe live Google Drive availability or prove backup restoration.** No third-party notification services or fake fax activity feed are used.
 
 **Security:** A single operator signs in using `API_TOKEN` in a same-origin HTTPS session; invalid-token submissions are throttled and security events are recorded in PostgreSQL. Neither the bearer key nor the Google Drive private tokens should be committed to source control.
 
