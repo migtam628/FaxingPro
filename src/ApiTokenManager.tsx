@@ -39,7 +39,11 @@ export default function ApiTokenManager({endpoint}:{endpoint:string}){
     try{
       const token=await createIntegrationToken(endpoint,{name:name.trim(),scopes:selected,expiresInDays:expiry});
       setCreated(token);
-      setItems(prev=>[token,...prev]);setName('');
+      setItems(prev=>[{
+        id:token.id,name:token.name,prefix:token.prefix,scopes:token.scopes,
+        createdAt:token.createdAt,expiresAt:token.expiresAt,
+        lastUsedAt:token.lastUsedAt,revokedAt:token.revokedAt
+      },...prev]);setName('');
       setNotice('Integration credential generated. Copy it now; it cannot be displayed again.');
     }catch(e){setError(e instanceof Error?e.message:'Token could not be created');}
     finally{setBusy(false);}
