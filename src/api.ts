@@ -96,6 +96,13 @@ export function getSecurityStatus(endpoint:string):Promise<SecurityStatus>{
 export function revokeAllSessions(endpoint:string):Promise<{revoked:number}>{
   return apiCall<{revoked:number}>(endpoint,'','/api/sessions',{method:'DELETE'});
 }
+export type RetentionImpactPreview = {
+  readOnly:true;policyEnabled:false;days:number;cutoff:string;notice:string;
+  counts:{total:number;archivedTerminal:number;activeTerminal:number;nonterminal:number;withDocuments:number};
+};
+export function getRetentionPreview(endpoint:string,days:number):Promise<RetentionImpactPreview>{
+  return apiCall<RetentionImpactPreview>(endpoint,'','/api/retention/preview?days='+encodeURIComponent(String(days)));
+}
 export type BackupStatus = {
   configured:boolean;message:string;runs:{name:string;completed_at:string;drive_verified_at:string|null}[];
   lastSuccessfulAt:string|null;ageHours:number|null;freshness:'recent'|'stale'|'missing';

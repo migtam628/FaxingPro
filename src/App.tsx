@@ -10,6 +10,7 @@ import SetupWizard from './SetupWizard';
 import ApiTokenManager from './ApiTokenManager';
 import NotificationCenter from './NotificationCenter';
 import ReconciliationPanel from './ReconciliationPanel';
+import RetentionPreview from './RetentionPreview';
 import ContactsManager from './ContactsManager';
 import PublicLanding from './PublicLanding';
 import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, getSecurityStatus, revokeAllSessions, setFaxFlag, getFaxEvents, getDailyActivity, downloadFax, submitFax, type DailyActivity, type FaxEvent, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus, type SecurityStatus } from './api';
@@ -489,6 +490,7 @@ export default function App(){
                 {backupStatus?.offsiteVerified?'Verified':'Not verified'}</span></div>
             <div className="notice inner"><ShieldCheck size={18}/><div><strong>Recovery key remains offline</strong>
               <span>Offsite transfer never sends plaintext fax PDFs. Restore testing and protection of the private age key are separate steps. The backup process does not delete local or Google Drive copies.</span></div></div>
+            <RetentionPreview endpoint={apiEndpoint}/>
             <div className="backup-actions">
               <button className="btn secondary" onClick={()=>void refreshBackups()}><RefreshCw size={16}/> Refresh status</button>
               <a className="btn secondary" href="https://github.com/migtam628/FaxingPro/blob/main/docs/BACKUP_RECOVERY.md" target="_blank" rel="noopener noreferrer">Backup & recovery guide <ArrowUpRight size={15}/></a>

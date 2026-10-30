@@ -584,6 +584,31 @@ const app=http.createServer(async(req,res)=>{
         }
         return output(res,405,{error:'Method not allowed'},{Allow:'PATCH, DELETE'});
       }
+      // Planning only: no retention setting, deletion, or background cleanup.
+      // Restrict this aggregate to the operator; integration tokens never see it.
+      if(p==='/api/retention/preview'){
+        if(auth.kind!=='operator')return output(res,403,{error:'Operator session required'});
+        if(req.method!=='GET')return output(res,405,{error:'Method not allowed'},{Allow:'GET'});
+        const requested=url.searchParams.getAll('days');
+        const daysText=requested.length?requested[0]:'365';
+        if(requested.length>1||!['30','90','180','365','730','1825'].includes(daysText))
+          return output(res,400,{error:'Choose 30, 90, 180, 365, 730 or 1825 days'});
+        const days=Number(daysText);
+        const cutoff=new Date(Date.now()-days*86400000).toISOString();
+        const {rows}=await db.query(
+          "SELECT count(*)::int AS total,"+
+          "count(*) FILTER (WHERE status IN ('received','delivered','failed') AND archived_at IS NOT NULL)::int AS archived_terminal,"+
+          "count(*) FILTER (WHERE status IN ('received','delivered','failed') AND archived_at IS NULL)::int AS active_terminal,"+
+          "count(*) FILTER (WHERE status NOT IN ('received','delivered','failed'))::int AS nonterminal,"+
+          "count(*) FILTER (WHERE file_name IS NOT NULL)::int AS with_documents "+
+          "FROM faxes WHERE created_at < $1::timestamptz",[cutoff]);
+        const counts=rows[0];
+        return output(res,200,{readOnly:true,policyEnabled:false,days,cutoff,
+          counts:{total:counts.total,archivedTerminal:counts.archived_terminal,
+            activeTerminal:counts.active_terminal,nonterminal:counts.nonterminal,
+            withDocuments:counts.with_documents},
+          notice:'Planning estimate only. No retention policy, purge, document deletion, or automatic cleanup is enabled.'});
+      }
       // Manual reconciliation is intentionally read-only: no Telnyx API requests,
       // status changes, retries, or changes to outbound authorization.
       if(p==='/api/reconciliation'){

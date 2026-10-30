@@ -287,6 +287,36 @@ const stillUnknown=(await (await request('/api/faxes?folder=all',{headers:auth})
   .items.find(x=>x.id===unknownId);
 assert.equal(stillUnknown.status,'unknown','Reconciliation must not change fax status');
 
+// Retention impact preview is operator-only and cannot modify any fax or file.
+// Age changes below affect synthetic rows in this disposable CI database only.
+assert.equal((await request('/api/retention/preview')).status,401);
+assert.equal((await request('/api/retention/preview',{headers:limited})).status,403);
+assert.equal((await request('/api/retention/preview',{method:'POST',headers:auth})).status,405);
+assert.equal((await request('/api/retention/preview?days=0',{headers:auth})).status,400);
+assert.equal((await request('/api/retention/preview?days=365&days=30',{headers:auth})).status,400);
+const retentionSeed=`UPDATE faxes SET created_at=now()-interval '400 days',
+  archived_at=now()-interval '390 days' WHERE id='${deliveredId}';
+  UPDATE faxes SET created_at=now()-interval '400 days' WHERE id='${unknownId}'`;
+execFileSync('docker',['compose','-f','deployment/telnyx/compose.yaml','--env-file','deployment/telnyx/.env',
+  'exec','-T','db','psql','-U','faxingpro','-d','faxingpro','-v','ON_ERROR_STOP=1','-c',retentionSeed],
+  {stdio:'pipe'});
+const beforePreview=(await (await request('/api/faxes?folder=all',{headers:auth})).json()).items;
+const previewResponse=await request('/api/retention/preview?days=365',{headers:cookieHeader});
+assert.equal(previewResponse.status,200);
+const preview=await previewResponse.json();
+assert.equal(preview.readOnly,true);
+assert.equal(preview.policyEnabled,false);
+assert.equal(preview.days,365);
+assert.equal(preview.counts.total,2);
+assert.equal(preview.counts.archivedTerminal,1);
+assert.equal(preview.counts.activeTerminal,0);
+assert.equal(preview.counts.nonterminal,1);
+assert.equal(preview.counts.withDocuments,0);
+assert.equal((await (await request('/api/retention/preview?days=30',{headers:auth})).json()).counts.total,2);
+assert.equal((await (await request('/api/retention/preview?days=1825',{headers:auth})).json()).counts.total,0);
+const afterPreview=(await (await request('/api/faxes?folder=all',{headers:auth})).json()).items;
+assert.deepEqual(afterPreview,beforePreview,'Preview must not alter fax records');
+
 assert.equal(faxRecord.readAt,null);
 assert.equal((await request('/api/notifications')).status,401);
 assert.equal((await request('/api/notifications/preferences')).status,401);
