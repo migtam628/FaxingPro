@@ -18,6 +18,7 @@ on:
       - 'src/api.ts'
       - 'src/App.tsx'
       - 'src/ReconciliationPanel.tsx'
+      - 'src/RetentionPreview.tsx'
       - 'src/ContactsManager.tsx'
       - 'src/NotificationCenter.tsx'
       - 'src/ApiTokenManager.tsx'
