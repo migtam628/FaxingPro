@@ -134,6 +134,7 @@ jobs:
               Path("docs/GOOGLE_DRIVE_BACKUPS.md"),
               Path("docs/SECURITY_SESSIONS.md"),
               Path("docs/WEBHOOK_RELIABILITY.md"),
+              Path("docs/RETENTION_PREVIEW.md"),
           ]
           with ZipFile("release-files/FaxingPro-Setup-Docs.zip", "w", ZIP_DEFLATED) as output:
               for source in files:
@@ -199,6 +200,7 @@ jobs:
                   "README.md", "docs/VPS_ONE_CLICK_INSTALL.md",
                   "docs/TELNYX_API_DEPLOYMENT.md",
                   "docs/BACKUP_RECOVERY.md", "docs/GOOGLE_DRIVE_BACKUPS.md",
+                  "docs/RETENTION_PREVIEW.md",
               }
               assert required.issubset(names), required - names
               assert archive.testzip() is None
