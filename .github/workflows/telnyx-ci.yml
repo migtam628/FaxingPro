@@ -9,6 +9,7 @@ on:
       - 'scripts/install-vps.sh'
       - 'scripts/install-faxingpro-*.sh'
       - 'tests/faxingpro-drive-ci.sh'
+      - 'tests/faxingpro-health-ci.sh'
       - 'tests/faxingpro-restore-ci.sh'
       - 'src/types.ts'
       - 'deployment/telnyx/**'
@@ -51,9 +52,14 @@ jobs:
           bash -n scripts/faxingpro-verify-backup.sh
           bash -n scripts/install-faxingpro-backup-timer.sh
           bash -n scripts/faxingpro-drive-upload.sh
+          bash -n scripts/faxingpro-backup-health.sh
+          bash -n scripts/install-faxingpro-health-timer.sh
+          bash -n tests/faxingpro-health-ci.sh
           bash -n scripts/install-faxingpro-drive.sh
           bash -n tests/faxingpro-drive-ci.sh
           bash -n tests/faxingpro-restore-ci.sh
+      - name: Validate independent read-only backup health monitoring in isolation
+        run: bash tests/faxingpro-health-ci.sh
       - name: Validate Node module syntax
         run: |
           node --check server/telnyx.mjs
