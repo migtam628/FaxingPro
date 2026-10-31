@@ -46,6 +46,7 @@ jobs:
           test -s docs/TELNYX_API_DEPLOYMENT.md
           test -s docs/BACKUP_RECOVERY.md
           test -s docs/GOOGLE_DRIVE_BACKUPS.md
+          test -s docs/BACKUP_HEALTH_MONITOR.md
       - name: Build web app
         run: npm run build
 
@@ -135,6 +136,7 @@ jobs:
               Path("docs/SECURITY_SESSIONS.md"),
               Path("docs/WEBHOOK_RELIABILITY.md"),
               Path("docs/RETENTION_PREVIEW.md"),
+              Path("docs/BACKUP_HEALTH_MONITOR.md"),
           ]
           with ZipFile("release-files/FaxingPro-Setup-Docs.zip", "w", ZIP_DEFLATED) as output:
               for source in files:
@@ -200,7 +202,7 @@ jobs:
                   "README.md", "docs/VPS_ONE_CLICK_INSTALL.md",
                   "docs/TELNYX_API_DEPLOYMENT.md",
                   "docs/BACKUP_RECOVERY.md", "docs/GOOGLE_DRIVE_BACKUPS.md",
-                  "docs/RETENTION_PREVIEW.md",
+                  "docs/RETENTION_PREVIEW.md", "docs/BACKUP_HEALTH_MONITOR.md",
               }
               assert required.issubset(names), required - names
               assert archive.testzip() is None
