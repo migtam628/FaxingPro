@@ -8,7 +8,7 @@ Invalid JSON login attempts to `POST /api/session` are now counted in a **rollin
 
 The backend records login successes, the first eight failures in each window, logout events, and bulk session revocation in an `operator_security_events` table. Audit data does not contain raw tokens or client IP addresses.
 
-ATLAS → **Security** now shows active browser session counts and the latest security events, and includes an explicit confirmation step for **Sign out all sessions**. This revokes all database-backed sessions (including your current browser) and requires the existing `API_TOKEN` to sign in again. Automation scripts using the API_TOKEN as a Bearer token remain authorized; revoke or rotate that secret separately when needed.
+ATLAS → **Security** now shows active browser session counts and the latest security events, and includes an explicit confirmation step for **Sign out all sessions**. This revokes all database-backed sessions (including your current browser) and requires the existing `API_TOKEN` to sign in again. Scripts using API_TOKEN as a Bearer token remain authorized **in legacy mode only**. Optional strict mode disables those requests; see [master bearer lockdown](MASTER_BEARER_LOCKDOWN.md).
 
 
 ## API Token Manager (read-only integration credentials)
@@ -44,7 +44,7 @@ curl -fsS https://fax.mttechservicesllc.com/healthz
 
 Changing the master token invalidates existing browser sessions because session validation checks its fingerprint. **It does not delete or rotate previously generated integration tokens**—revoke those individually if compromise is suspected. Changing `STORAGE_ENCRYPTION_KEY` is a separate, potentially destructive recovery-key migration and must never be used as a routine login-token rotation.
 
-**Current limitations:** There is an opt-in [browser-session-only TOTP challenge](OPERATOR_TOTP.md), but the master `API_TOKEN` bearer path remains **single-factor**, so full MFA is **not yet implemented**. No individual named user accounts, delegated write scopes, automatic secrets rotation, or per-user role assignments. This remains a single-operator pilot. A full production deployment requires layered edge/rate protections, audit retention, tested recovery and a security review.
+**Current limitations:** Opt-in [TOTP](OPERATOR_TOTP.md) supports browser sign-in. By default, the master `API_TOKEN` bearer remains a single-factor bypass; opt-in [Bearer lockdown](MASTER_BEARER_LOCKDOWN.md) blocks that path and requires TOTP-assured operator sessions. No individual named user accounts, delegated write scopes, automatic secrets rotation, or per-user role assignments. This remains a single-operator pilot. A full production deployment requires layered edge/rate protections, audit retention, tested recovery and a security review.
 
 ## Deploy the update
 
@@ -70,4 +70,8 @@ The migrations add two small tables (`operator_login_failures`, `operator_securi
 
 ## Opt-in browser-session TOTP (v0.8)
 
-The [operator TOTP runbook](OPERATOR_TOTP.md) covers deliberate setup, recovery, clock synchronization and limitations. Without a configured `OPERATOR_TOTP_SECRET`, login behavior remains unchanged; the operator can still authenticate using the existing API_TOKEN. If enabled, the first-run login form requests a 6-digit authenticator code, and PostgreSQL prevents a successfully accepted 30-second time step from being reused across sessions. This is a **browser-session hardening only** and does not protect requests already authenticated using the legacy master Bearer API_TOKEN.
+The [operator TOTP runbook](OPERATOR_TOTP.md) covers deliberate setup, recovery, clock synchronization and limitations. Without a configured `OPERATOR_TOTP_SECRET`, login behavior remains unchanged; the operator can still authenticate using the existing API_TOKEN. If enabled, the first-run login form requests a 6-digit authenticator code, and PostgreSQL prevents a successfully accepted 30-second time step from being reused across sessions. This protects browser sessions; for legacy API_TOKEN bearer requests, use the separate [opt-in lockdown policy](MASTER_BEARER_LOCKDOWN.md).
+
+## Optional master bearer lockdown
+
+The [safe lockdown and rollback guide](MASTER_BEARER_LOCKDOWN.md) documents `OPERATOR_BEARER_MODE=disabled`, strict TOTP prerequisites, session assurance migration, impact on legacy API automation and operating limits. This policy is deliberately disabled until an operator verifies a fresh authenticated login and the rollback procedure. No code pull or release artifact automatically enables it.
