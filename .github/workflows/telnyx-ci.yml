@@ -95,7 +95,7 @@ jobs:
         run: node tests/telnyx-smoke.mjs
       - name: Verify opt-in browser TOTP after synthetic session smoke
         run: |
-          printf '\\nOPERATOR_TOTP_SECRET=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ\\n' >> deployment/telnyx/.env
+          printf '\nOPERATOR_TOTP_SECRET=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ\n' >> deployment/telnyx/.env
           docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --no-deps --force-recreate api
           node tests/telnyx-totp-smoke.mjs
       - name: Seed encrypted test PDF for full recovery rehearsal
