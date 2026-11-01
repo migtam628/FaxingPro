@@ -6,7 +6,7 @@ ATLAS already shows database-ledger backup notifications. This **separate** read
 
 - The existing systemd `faxingpro-backup.timer` must be active, and `faxingpro-backup.service` must not be failed.
 - The latest timestamped local backup directory must have `database.dump.age`, `documents.tar.age`, `config.env.age`, and `SHA256SUMS`, with no symlinked files. SHA-256 must verify and age must be at most **36 hours** (or no more than five minutes into the future).
-- Root's configured rclone remote must use Google Drive and answer an actual read-only `rclone lsf` request.
+- Root's configured rclone remote must use Google Drive and answer an actual read-only `rclone lsf` request. The probe uses up to two bounded attempts to tolerate temporary API latency after bulk uploads; an invalid backend is `drive=misconfigured`, while a failed/unresponsive live listing is `drive=unavailable`.
 - Once a local archive is **at least two hours old**, the same-named Drive folder must pass `rclone check --checksum --one-way` for the four expected files. Until then `drive=pending` explicitly does **not** mean verified. An unavailable Drive remote is always a failure, even during the grace period.
 - Any failure exits nonzero and logs a generic summary; `--monitor` optionally sends an external HTTPS JSON alert independent of ATLAS. Neither mode uploads, retries, deletes, or changes backup files.
 
@@ -42,7 +42,7 @@ Set `chmod 600 /etc/faxingpro/backup-health.env`. The URL itself may contain a p
 
 - `timer=inactive` / `job=failed`: inspect `systemctl status faxingpro-backup.timer faxingpro-backup.service` and the backup service journal.
 - `local=missing|incomplete|stale|clock-skew`: inspect the backup root, manifest, disk space and server clock. Do not remove backups to clear alerts.
-- `drive=unconfigured|misconfigured|unavailable`: check root-owned `/etc/faxingpro/drive.env`, rclone configuration and OAuth; do not expose `rclone.conf`.
+- `drive=unconfigured|misconfigured|unavailable`: check root-owned `/etc/faxingpro/drive.env`, rclone configuration and OAuth; do not expose `rclone.conf`. If uploads are working but `drive=unavailable` persists, safely test the **configured folder** (not only the Drive root): `rclone lsf google:FaxingPro-Encrypted-Backups --max-depth 1`. Drive may throttle briefly after bulk uploads. The health monitor reads its rclone path from `drive.env`, and its status reflects the actual live probe.
 - `drive=missing-or-mismatch`: examine upload logs and actual Drive contents. Only the existing safe uploader can retry; the monitor never repairs anything.
 - `drive=pending`: remote read access passed, but the archive is inside the two-hour grace period and its offsite checksum has not been checked yet.
 
