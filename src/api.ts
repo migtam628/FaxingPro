@@ -60,7 +60,7 @@ export function setFaxFlag(endpoint:string,id:string,field:'read'|'archive',enab
   });
 }
 
-export type OperatorSession = {authenticated:boolean;expiresAt:string|null};
+export type OperatorSession = {authenticated:boolean;expiresAt:string|null;mfaRequired:boolean};
 // Integration credentials are generated once and NEVER persisted by the browser.
 export type IntegrationScope = 'faxes:read'|'contacts:read'|'reports:read';
 export type IntegrationToken = {
@@ -88,7 +88,7 @@ export function revokeIntegrationToken(endpoint:string,id:string):Promise<{revok
 export type SecurityStatus = {
   activeSessions:number;failedLogins24h:number;
   events:{type:string;createdAt:string}[];
-  mode:'single-operator';mfaEnabled:false;
+  mode:'single-operator';mfaEnabled:boolean;mfaScope:'browser-session-only';
 };
 export function getSecurityStatus(endpoint:string):Promise<SecurityStatus>{
   return apiCall<SecurityStatus>(endpoint,'','/api/security');
@@ -149,9 +149,9 @@ export async function checkApi(endpoint:string):Promise<Health>{
 export function getSession(endpoint:string):Promise<OperatorSession>{
   return apiCall<OperatorSession>(endpoint,'','/api/session');
 }
-export function createSession(endpoint:string,token:string):Promise<OperatorSession>{
+export function createSession(endpoint:string,token:string,otp=''):Promise<OperatorSession>{
   return apiCall<OperatorSession>(endpoint,'','/api/session',{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,otp})
   });
 }
 export function destroySession(endpoint:string):Promise<OperatorSession>{
