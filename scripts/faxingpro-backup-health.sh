@@ -50,10 +50,21 @@ if [[ -f "$drive_env" ]]; then
   if [[ "$remote" =~ ^[A-Za-z][A-Za-z0-9_-]*:FaxingPro-Encrypted-Backups$ ]] &&
     [[ -f "$config" ]] && command -v rclone >/dev/null && command -v timeout >/dev/null; then
     remote_name="${remote%%:*}"
-    if timeout 45 rclone --config "$config" config show "$remote_name" 2>/dev/null | grep -Eq '^type = drive$' &&
-      timeout 45 rclone --config "$config" lsf "$remote" --max-depth 1 >/dev/null 2>&1; then
-      drive_status=pending
-      if [[ -n "$snapshot" && "$local_status" != incomplete && "$local_status" != clock-skew ]]; then
+    # Read the entire config output. grep -q can exit early and, under
+    # pipefail, turn a valid rclone config into a false negative (SIGPIPE).
+    if timeout 15 rclone --config "$config" config show "$remote_name" 2>/dev/null |
+      awk '$0 == "type = drive" {found=1} END {exit !found}'; then
+      # A long Drive listing after a batch upload can hit transient API latency.
+      # Give it two bounded, read-only attempts before reporting unavailable.
+      drive_status=unavailable
+      for attempt in 1 2; do
+        if timeout 65 rclone --config "$config" lsf "$remote" --max-depth 1 >/dev/null 2>&1; then
+          drive_status=pending
+          break
+        fi
+      done
+      if [[ "$drive_status" == pending && -n "$snapshot" &&
+            "$local_status" != incomplete && "$local_status" != clock-skew ]]; then
         if (( age_seconds >= 2*3600 )); then
           filelist="$(mktemp)"
           trap 'rm -f "$filelist"' EXIT
@@ -67,7 +78,7 @@ if [[ -f "$drive_env" ]]; then
         fi
       fi
     else
-      drive_status=unavailable
+      drive_status=misconfigured
     fi
   else
     drive_status=misconfigured
