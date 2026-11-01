@@ -60,7 +60,7 @@ export function setFaxFlag(endpoint:string,id:string,field:'read'|'archive',enab
   });
 }
 
-export type OperatorSession = {authenticated:boolean;expiresAt:string|null;mfaRequired:boolean};
+export type OperatorSession = {authenticated:boolean;expiresAt:string|null;mfaRequired:boolean;masterBearerEnabled:boolean};
 // Integration credentials are generated once and NEVER persisted by the browser.
 export type IntegrationScope = 'faxes:read'|'contacts:read'|'reports:read';
 export type IntegrationToken = {
@@ -88,7 +88,8 @@ export function revokeIntegrationToken(endpoint:string,id:string):Promise<{revok
 export type SecurityStatus = {
   activeSessions:number;failedLogins24h:number;
   events:{type:string;createdAt:string}[];
-  mode:'single-operator';mfaEnabled:boolean;mfaScope:'browser-session-only';
+  mode:'single-operator';mfaEnabled:boolean;masterBearerEnabled:boolean;
+  mfaScope:'disabled'|'browser-session-only'|'operator-session-required';
 };
 export function getSecurityStatus(endpoint:string):Promise<SecurityStatus>{
   return apiCall<SecurityStatus>(endpoint,'','/api/security');
