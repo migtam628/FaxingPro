@@ -65,12 +65,35 @@ assert.equal(roleEvent?.actorKind,'owner');
 const changePrefs=await request('/api/notifications/preferences',{method:'PATCH',
   headers:{...browser,'Content-Type':'application/json'},body:JSON.stringify({browserEnabled:false})});
 assert.equal(changePrefs.status,200,'Operator role upgrade must take effect without re-login');
+const contactCreated=await request('/api/contacts',{method:'POST',
+  headers:{...browser,'Content-Type':'application/json'},
+  body:JSON.stringify({name:'CI Audit Contact',number:'+12025550137',
+    email:'',company:'',notes:''})});
+assert.equal(contactCreated.status,201);
+const contactEntry=await contactCreated.json();
+const operatorAudit=await (await request('/api/security',{headers:master})).json();
+const contactEvent=operatorAudit.events.find(e=>e.type==='contact_created'&&e.targetId===contactEntry.id);
+assert.equal(contactEvent?.actorKind,'team');
+assert.equal(contactEvent?.actorUserId,id);
+assert.equal(contactEvent?.actorRole,'operator');
+
 assert.equal((await request('/api/team/users',{headers:browser})).status,403);
 assert.equal((await change({role:'admin'})).status,200);
 assert.equal((await request('/api/team/users',{headers:browser})).status,200,
   'Admin promotion should take effect immediately');
 const namedAdminAudit=await request('/api/security',{headers:browser});
 assert.equal(namedAdminAudit.status,200,'Named administrator can review audit history');
+const createdByAdmin=await request('/api/team/users',{method:'POST',
+  headers:{...browser,'Content-Type':'application/json','X-FaxingPro-Action':'team-manager'},
+  body:JSON.stringify({name:'CI Audit Secondary',email:'audit-secondary@example.invalid',role:'viewer'})});
+assert.equal(createdByAdmin.status,201);
+const secondary=await createdByAdmin.json();
+const afterAdminCreate=await (await request('/api/security',{headers:browser})).json();
+const secondaryEvent=afterAdminCreate.events.find(e=>e.type==='team_user_created'&&e.targetId===secondary.user.id);
+assert.equal(secondaryEvent?.actorKind,'team');
+assert.equal(secondaryEvent?.actorUserId,id);
+assert.equal(secondaryEvent?.actorRole,'admin');
+
 assert.equal((await request('/api/team/users/'+id,{method:'PATCH',
   headers:{...browser,'Content-Type':'application/json','X-FaxingPro-Action':'team-manager'},
   body:JSON.stringify({disabled:true})})).status,403,'Admin cannot disable own account');
