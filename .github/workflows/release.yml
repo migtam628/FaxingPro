@@ -140,6 +140,7 @@ jobs:
               Path("docs/OPERATOR_TOTP.md"),
               Path("docs/MASTER_BEARER_LOCKDOWN.md"),
               Path("docs/NAMED_TEAM_ACCOUNTS.md"),
+              Path("docs/ATTRIBUTED_AUDIT.md"),
               Path("docs/STAGING_RECOVERY_REHEARSAL.md"),
           ]
           with ZipFile("release-files/FaxingPro-Setup-Docs.zip", "w", ZIP_DEFLATED) as output:
@@ -156,7 +157,7 @@ jobs:
           } > release-files/RELEASE_NOTES.md
           awk '/^## Easy Ubuntu VPS installer$/{show=1} /^## Deployment: Docker and Telnyx$/{show=0} show{print}' README.md >> release-files/RELEASE_NOTES.md
           test "$(wc -c < release-files/RELEASE_NOTES.md)" -gt 2500
-          printf '\n---\n**Security:** Keep private credentials off GitHub and out of tickets. Fax sending is disabled on first install. MFA, user roles and certified disaster recovery are not yet included.\n' >> release-files/RELEASE_NOTES.md
+          printf '\n---\n**Security:** Keep private credentials off GitHub and out of tickets. Fax sending is disabled on first install. Named accounts with TOTP and roles are available; comprehensive audit, full MFA enrollment and certified disaster recovery remain unfinished.\n' >> release-files/RELEASE_NOTES.md
           (cd release-files && sha256sum *.exe *.dmg *.AppImage *.deb faxingpro-install.sh README.md FaxingPro-Setup-Docs.zip RELEASE_NOTES.md > SHA256SUMS)
           files+=(release-files/faxingpro-install.sh release-files/README.md release-files/FaxingPro-Setup-Docs.zip release-files/RELEASE_NOTES.md release-files/SHA256SUMS)
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
@@ -211,6 +212,7 @@ jobs:
                   "docs/OPERATOR_TOTP.md",
                   "docs/MASTER_BEARER_LOCKDOWN.md",
                   "docs/NAMED_TEAM_ACCOUNTS.md",
+                  "docs/ATTRIBUTED_AUDIT.md",
               }
               assert required.issubset(names), required - names
               assert archive.testzip() is None
