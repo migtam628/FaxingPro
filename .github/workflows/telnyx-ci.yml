@@ -68,6 +68,7 @@ jobs:
           node --check server/telnyx.mjs
           node --check server/telnyx-utils.mjs
           node --check server/operator-totp.mjs
+          node --check server/operator-auth-policy.mjs
       - name: Run API and webhook security tests
         run: npm test
       - name: Prepare ephemeral signed-webhook fixture and Compose secrets
@@ -95,7 +96,7 @@ jobs:
         run: node tests/telnyx-smoke.mjs
       - name: Verify opt-in browser TOTP after synthetic session smoke
         run: |
-          printf '\nOPERATOR_TOTP_SECRET=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ\n' >> deployment/telnyx/.env
+          sed -i 's/^OPERATOR_TOTP_SECRET=.*/OPERATOR_TOTP_SECRET=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ/' deployment/telnyx/.env
           docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --no-deps --force-recreate api
           node tests/telnyx-totp-smoke.mjs
       - name: Seed encrypted test PDF for full recovery rehearsal
@@ -126,6 +127,13 @@ jobs:
       - name: Verify encrypted Google Drive uploader with a mocked rclone remote
         run: |
           bash tests/faxingpro-drive-ci.sh "$RUNNER_TEMP/backup-archives"
+      - name: Verify opt-in strict master bearer lockdown with synthetic credentials
+        run: |
+          sed -i 's/^OPERATOR_TOTP_SECRET=.*/OPERATOR_TOTP_SECRET=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP/' deployment/telnyx/.env
+          sed -i 's/^OPERATOR_BEARER_MODE=.*/OPERATOR_BEARER_MODE=disabled/' deployment/telnyx/.env
+          grep -q '^OPERATOR_BEARER_MODE=disabled$' deployment/telnyx/.env
+          docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --no-deps --force-recreate api
+          node tests/telnyx-lockdown-smoke.mjs
       - name: Shutdown test stack
         if: always()
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env down || true

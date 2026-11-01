@@ -2,7 +2,7 @@
 
 This feature adds an optional RFC 6238 SHA-1 six-digit TOTP challenge to **browser cookie session issuance**. It is **disabled by default**. It does not add named user accounts, password recovery codes, role-based access controls or complete MFA protection.
 
-**Critical limitation:** `Authorization: Bearer API_TOKEN` retains full operator privileges, without a TOTP requirement, for backwards-compatible scripts and integrations. Anyone holding the master API_TOKEN can still access protected endpoints without a one-time code. Existing browser sessions remain valid if TOTP is enabled later; explicitly revoke them if you require a fresh login. Consequently **this milestone must not be marketed or relied upon as full MFA for administrative access.** Scoped read-only `fpx_` integration tokens are unchanged.
+**Critical limitation in the default legacy configuration:** `Authorization: Bearer API_TOKEN` retains full operator privileges without TOTP. This is an administrative bypass unless the separately opt-in [master Bearer lockdown](MASTER_BEARER_LOCKDOWN.md) is enabled. In lockdown, privileged master-bearer API requests are rejected and old sessions without matching TOTP assurance are invalidated. Full user-account MFA, individual identity management, role controls and account recovery remain future work. Scoped read-only `fpx_` integration tokens are unchanged.
 
 ## Enabling deliberately on the existing VPS
 
@@ -31,9 +31,9 @@ Do **not** enable this automatically when pulling or deploying updates. This is 
 
 - New browser sessions require both API_TOKEN and a current or adjacent 30-second TOTP code (±1 step clock drift). A successful time step is recorded atomically in PostgreSQL and cannot be replayed to issue another session, even across API instances. Wrong codes consume the existing rolling login-failure budget.
 - The database stores only a fingerprint of the configured TOTP key and the last accepted time step. The secret stays in the protected `.env` and is included only in the already age-encrypted backup config archive; do not put it in GitHub Actions, issues or chat.
-- Clearing `OPERATOR_TOTP_SECRET` in `.env` and recreating the API restores the original token-only login behavior (emergency operator recovery). This **weakens security** and must be audited privately.
-- Existing 7-day cookie sessions and restricted integration API tokens retain their existing semantics. The API security status labels TOTP as `browser-session-only` to prevent confusing it with full application MFA.
-- Real production MFA requires eliminating or separately safeguarding the legacy master Bearer privilege, supporting multiple operator identities and role-scoped credentials, secure enrollment/recovery and auditing. That remains future work.
+- Removing TOTP while `OPERATOR_BEARER_MODE=disabled` is set makes API startup **fail closed**; follow the trusted [lockdown rollback procedure](MASTER_BEARER_LOCKDOWN.md) and explicitly restore legacy mode first if recovery is unavoidable.
+- Existing 7-day cookies remain compatible in legacy mode. Lockdown rejects sessions that lack current TOTP assurance. The API reports `browser-session-only` for legacy mode or `operator-session-required` for lockdown, without implying named-user MFA.
+- Optional lockdown now mitigates the master Bearer bypass for new requests. Full production identity protection still requires multiple named accounts, role-scoped credentials, reliable enrollment/recovery and independent security review.
 
 ## Test evidence
 

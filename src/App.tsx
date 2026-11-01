@@ -511,7 +511,7 @@ export default function App(){
             <div className="settings-card"><AlertTriangle size={22}/><div><strong>Invalid operator logins in last 24 hours</strong>
               <p>{securityStatus?String(securityStatus.failedLogins24h):'Loading audit data...'}</p></div></div>
             <div className="settings-card"><Archive size={22}/><div><strong>Additional security still required</strong>
-              <p>Browser TOTP: {securityStatus?.mfaEnabled?'Enabled (browser sessions only)':'Not configured'}. Master API_TOKEN bearer access still bypasses TOTP. Independent user accounts, full MFA, role controls and retention policies remain future work.</p></div></div>
+              <p>Browser TOTP: {securityStatus?.mfaEnabled?'Enabled':'Not configured'}. Master API_TOKEN bearer: {securityStatus?.masterBearerEnabled===false?'Disabled (TOTP-assured operator sessions required)':'Enabled for legacy scripts'}. This remains a single-operator workspace; named identities, roles and retention safeguards are not yet ready.</p></div></div>
             <div className="backup-history"><h3>Recent operator security events</h3>
               {securityStatus?.events.length?securityStatus.events.map((event,index)=>
                 <div className="backup-record" key={index}>
