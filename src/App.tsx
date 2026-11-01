@@ -514,8 +514,8 @@ export default function App(){
           </Panel>}
           {page==='security'&&<Panel title="Security & Sessions">
             <ApiTokenManager endpoint={apiEndpoint}/>
-            <div className="settings-card"><ShieldCheck size={22}/><div><strong>Single-operator authentication</strong>
-              <p>API_TOKEN exchange, secure HttpOnly session cookies and persistent invalid-login throttling (8 invalid attempts per 15 minutes). Valid operator credentials remain accepted during an attack.</p></div>
+            <div className="settings-card"><ShieldCheck size={22}/><div><strong>Owner and named-user authentication</strong>
+              <p>Owner API_TOKEN or named team member password plus TOTP, secure HttpOnly session cookies, and persistent invalid-login throttling (8 invalid attempts per 15 minutes).</p></div>
               <span className="status status-received">Enabled</span></div>
             <div className="settings-card"><LockKeyhole size={22}/><div><strong>Active operator sessions</strong>
               <p>{securityStatus?securityStatus.activeSessions+' active browser session(s)':'Loading session status...'}</p></div>
@@ -523,12 +523,16 @@ export default function App(){
             <div className="settings-card"><AlertTriangle size={22}/><div><strong>Invalid operator logins in last 24 hours</strong>
               <p>{securityStatus?String(securityStatus.failedLogins24h):'Loading audit data...'}</p></div></div>
             <div className="settings-card"><Archive size={22}/><div><strong>Additional security still required</strong>
-              <p>Browser TOTP: {securityStatus?.mfaEnabled?'Enabled':'Not configured'}. Master API_TOKEN bearer: {securityStatus?.masterBearerEnabled===false?'Disabled (TOTP-assured operator sessions required)':'Enabled for legacy scripts'}. This remains a single-operator workspace; named identities, roles and retention safeguards are not yet ready.</p></div></div>
-            <div className="backup-history"><h3>Recent operator security events</h3>
+              <p>Owner TOTP: {securityStatus?.mfaEnabled?'Enabled':'Not configured'}. Master API_TOKEN bearer: {securityStatus?.masterBearerEnabled===false?'Disabled':'Enabled for legacy scripts'}. Named team accounts have mandatory TOTP and enforced roles. Formal retention, account self-service, independent fax ownership and complete audit coverage remain outstanding.</p></div></div>
+            <div className="backup-history"><h3>Recent attributed security and workspace events</h3>
               {securityStatus?.events.length?securityStatus.events.map((event,index)=>
                 <div className="backup-record" key={index}>
                   <ShieldCheck size={17}/>
-                  <strong>{event.type.replaceAll('_',' ')}</strong>
+                  <div><strong>{event.type.replaceAll('_',' ')}</strong>
+                    <small>{event.actorName||'System / unknown'}
+                      {event.actorRole?' ('+event.actorRole+')':''}
+                      {event.targetType?' · '+event.targetType+(event.targetId?' '+event.targetId.slice(0,8):''):''}
+                    </small></div>
                   <span>{new Date(event.createdAt).toLocaleString()}</span>
                 </div>):<Empty label="No security events recorded yet."/>}
             </div>
