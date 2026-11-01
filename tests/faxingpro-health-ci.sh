@@ -19,8 +19,17 @@ set -Eeuo pipefail
 [[ "${1:-}" == --config ]] && shift 2
 op="${1:-}"; shift
 case "$op" in
-  config) echo 'type = drive';;
-  lsf) [[ "${TEST_DRIVE_DOWN:-0}" == 0 ]];;
+  config)
+    echo 'type = drive'
+    # Long multi-line config exercises a full-consuming parser under pipefail.
+    for i in {1..300}; do printf 'unrelated_field_%s = value\n' "$i"; done;;
+  lsf)
+    if [[ "${TEST_DRIVE_FAIL_ONCE:-0}" == 1 &&
+          ! -f "${TEST_LSF_FAILURE_MARKER:-/dev/null}" ]]; then
+      : > "$TEST_LSF_FAILURE_MARKER"
+      exit 7
+    fi
+    [[ "${TEST_DRIVE_DOWN:-0}" == 0 ]];;
   check) [[ "${TEST_DRIVE_MISMATCH:-0}" == 0 ]];;
   *) exit 13;;
 esac
@@ -42,6 +51,9 @@ done
 (cd "$tmp/backups/$stamp" && sha256sum *.age > SHA256SUMS)
 monitor="$root/scripts/faxingpro-backup-health.sh"
 bash "$monitor" --check | grep -q 'local=healthy drive=verified'
+TEST_LSF_FAILURE_MARKER="$tmp/first-listing-failed" TEST_DRIVE_FAIL_ONCE=1 \
+  bash "$monitor" --check | grep -q 'local=healthy drive=verified'
+[[ -f "$tmp/first-listing-failed" ]] || { echo 'Expected first Drive listing to fail in test' >&2; exit 1; }
 if TEST_JOB_FAILED=1 bash "$monitor" --check; then echo 'Missed failed backup job' >&2; exit 1; fi
 if TEST_DRIVE_DOWN=1 bash "$monitor" --check; then echo 'Missed Drive outage' >&2; exit 1; fi
 if TEST_DRIVE_MISMATCH=1 bash "$monitor" --check; then echo 'Missed Drive checksum mismatch' >&2; exit 1; fi

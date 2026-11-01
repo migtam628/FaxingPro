@@ -38,7 +38,7 @@ User=root
 Environment=HOME=/root
 EnvironmentFile=-/etc/faxingpro/backup-health.env
 ExecStart=/usr/bin/bash $repo/scripts/faxingpro-backup-health.sh --monitor
-TimeoutStartSec=240
+TimeoutStartSec=360
 UMask=0077
 UNIT
 cat > /etc/systemd/system/faxingpro-backup-health.timer <<'UNIT'
