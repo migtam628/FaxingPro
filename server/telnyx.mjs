@@ -4,15 +4,18 @@ import {mkdir,readFile,writeFile,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
 import {decodeTotpSecret,matchTotp,fingerprintTotp} from './operator-totp.mjs';
+import {parseMasterBearerMode,masterBearerAllowed} from './operator-auth-policy.mjs';
 import {e164US,pdfValid,cleanName,statusFor,webhookKey,verifyWebhook,
   signMedia,mediaAuthorized,safeIncomingUrl,encryptPdf,decryptPdf} from './telnyx-utils.mjs';
 
 const e=process.env, port=Number(e.PORT||8088), dir=e.FILE_DIR||'/data/files';
 const secret=e.API_TOKEN||'', mediaSecret=e.MEDIA_SIGNING_SECRET||'', storageKey=e.STORAGE_ENCRYPTION_KEY||'';
-// Optional browser-session second factor; master Bearer API_TOKEN remains an
-// administrative bypass until independent user identities are introduced.
+// Existing master bearer clients stay compatible unless explicitly locked down.
+// Lockdown requires browser TOTP so the operator token alone cannot authorize API calls.
 const totpKey=e.OPERATOR_TOTP_SECRET?decodeTotpSecret(e.OPERATOR_TOTP_SECRET):null;
 const totpFingerprint=totpKey?fingerprintTotp(totpKey):null;
+const masterBearerMode=parseMasterBearerMode(e.OPERATOR_BEARER_MODE,!!totpKey);
+const allowMasterBearer=masterBearerAllowed(masterBearerMode);
 const base=(e.TELNYX_PUBLIC_BASE_URL||'').replace(/\/$/,'');
 const faxApp=e.TELNYX_FAX_APP_ID||'',did=e.TELNYX_FROM_NUMBER||'';
 const sending=e.SEND_ENABLED==='true',destination=e.TEST_DESTINATION||'';
@@ -77,7 +80,7 @@ const integrationScope=(method,p)=>{
 };
 const authContext=async(req,p)=>{
   const bearer=(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
-  if(tokenMatches(bearer))return {kind:'operator'};
+  if(tokenMatches(bearer))return allowMasterBearer?{kind:'operator'}:{kind:'blocked-master'};
   // When an Authorization header is supplied, never silently escalate its
   // permissions using an unrelated browser cookie.
   if(!req.headers.authorization && await currentSession(req))return {kind:'operator'};
@@ -97,7 +100,7 @@ const tokenPublic=r=>({
 const operatorSession=async(req,res)=>{
   if(req.method==='GET'){
     const active=await currentSession(req);
-    return output(res,200,{authenticated:!!active,expiresAt:active?.expires_at||null,mfaRequired:!!totpKey});
+    return output(res,200,{authenticated:!!active,expiresAt:active?.expires_at||null,mfaRequired:!!totpKey,masterBearerEnabled:allowMasterBearer});
   }
   if(req.method==='DELETE'){
     const raw=sessionCookie(req);
@@ -105,7 +108,7 @@ const operatorSession=async(req,res)=>{
       const result=await db.query('DELETE FROM operator_sessions WHERE token_hash=$1',[sessionHash(raw)]);
       if(result.rowCount)await auditSecurity('logout');
     }
-    return output(res,200,{authenticated:false,mfaRequired:!!totpKey},{'Set-Cookie':cookieClear});
+    return output(res,200,{authenticated:false,mfaRequired:!!totpKey,masterBearerEnabled:allowMasterBearer},{'Set-Cookie':cookieClear});
   }
   if(req.method!=='POST')return output(res,405,{error:'Method not allowed'},{Allow:'GET, POST, DELETE'});
   if(!(req.headers['content-type']||'').startsWith('application/json'))
@@ -144,7 +147,7 @@ const operatorSession=async(req,res)=>{
     [sessionHash(raw),tokenFingerprint,expires]);
   await auditSecurity('login_success');
   const cookie=cookieName+'='+raw+'; '+cookieBase+'; Max-Age=604800';
-  return output(res,200,{authenticated:true,expiresAt:expires.toISOString(),mfaRequired:!!totpKey},{'Set-Cookie':cookie});
+  return output(res,200,{authenticated:true,expiresAt:expires.toISOString(),mfaRequired:!!totpKey,masterBearerEnabled:allowMasterBearer},{'Set-Cookie':cookie});
 };
 const body=async(req,limit)=>{let len=0;const chunks=[];for await(const c of req){len+=c.length;
   if(len>limit)throw Error('Body exceeds size limit');chunks.push(c);}return Buffer.concat(chunks);};
@@ -402,6 +405,8 @@ const app=http.createServer(async(req,res)=>{
     if(p.startsWith('/api/')){
       const auth=await authContext(req,p);
       if(!auth)return output(res,401,{error:'Unauthorized'});
+      if(auth.kind==='blocked-master')
+        return output(res,403,{error:'Master bearer authorization is disabled. Sign in with an authenticator code to obtain a browser session.'});
       if(auth.kind==='restricted')return output(res,403,{error:'Integration token is expired, revoked or lacks permission for this endpoint'});
       if(p==='/api/tokens'){
         if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
@@ -468,7 +473,9 @@ const app=http.createServer(async(req,res)=>{
           activeSessions:sessionData.rows[0].count,
           failedLogins24h:failuresData.rows[0].count,
           events:eventsData.rows,
-          mode:'single-operator',mfaEnabled:!!totpKey,mfaScope:'browser-session-only'
+          mode:'single-operator',mfaEnabled:!!totpKey,
+          masterBearerEnabled:allowMasterBearer,
+          mfaScope:!totpKey?'disabled':allowMasterBearer?'browser-session-only':'operator-session-required'
         });
       }
       if(req.method==='DELETE'&&p==='/api/sessions'){
