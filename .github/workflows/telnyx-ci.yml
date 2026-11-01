@@ -50,6 +50,8 @@ jobs:
           bash scripts/install-vps.sh --self-test
           bash scripts/install-vps.sh --help >/dev/null
           bash -n scripts/faxingpro-verify-backup.sh
+          bash -n scripts/faxingpro-staging-recovery.sh
+          bash scripts/faxingpro-staging-recovery.sh --help >/dev/null
           bash -n scripts/install-faxingpro-backup-timer.sh
           bash -n scripts/faxingpro-drive-upload.sh
           bash -n scripts/faxingpro-backup-health.sh
@@ -110,6 +112,9 @@ jobs:
           test "$count" -eq 1
           node tests/telnyx-backup-monitor.mjs
           bash tests/faxingpro-restore-ci.sh restore "$RUNNER_TEMP/recovery-fixture" \
+            "$archive" "$RUNNER_TEMP/recovery-identity.txt"
+          # New staging procedure: synthetic-only rehearsal on disposable CI runner.
+          bash scripts/faxingpro-staging-recovery.sh --rehearse \
             "$archive" "$RUNNER_TEMP/recovery-identity.txt"
       - name: Verify encrypted Google Drive uploader with a mocked rclone remote
         run: |
