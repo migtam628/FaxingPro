@@ -548,6 +548,25 @@ const app=http.createServer(async(req,res)=>{
         await auditSecurity('team_user_updated');
         return output(res,200,result.rows[0]);
       }
+      const resetMember=p.match(/^\/api\/team\/users\/([0-9a-f-]{36})\/reset$/i);
+      if(resetMember){
+        if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
+        if(req.method!=='POST')return output(res,405,{error:'Method not allowed'},{Allow:'POST'});
+        if(req.headers['x-faxingpro-action']!=='team-manager')
+          return output(res,403,{error:'Team manager action header required'});
+        if(auth.userId===resetMember[1])return output(res,403,{error:'Use owner recovery for your own account'});
+        const password=generateTemporaryPassword(),totpSecret=generateTotpSecret();
+        const passwordHash=await hashPassword(password);
+        const {rows}=await db.query(
+          'UPDATE team_users SET password_hash=$2,totp_ciphertext=$3,last_totp_step=-1 '+
+          'WHERE id=$1 RETURNING id,email',
+          [resetMember[1],passwordHash,encryptTeamTotp(totpSecret,storageKey)]);
+        if(!rows.length)return output(res,404,{error:'Account not found'});
+        await db.query('DELETE FROM operator_sessions WHERE team_user_id=$1',[resetMember[1]]);
+        await auditSecurity('team_credentials_rotated');
+        return output(res,200,{email:rows[0].email,credentials:{password,totpSecret},
+          notice:'All sessions revoked. Save the replacement credentials securely now.'});
+      }
       if(p==='/api/tokens'){
         if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
         if(req.method==='GET'){
