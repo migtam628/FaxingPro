@@ -99,13 +99,6 @@ jobs:
           sed -i 's/^OPERATOR_TOTP_SECRET=.*/OPERATOR_TOTP_SECRET=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ/' deployment/telnyx/.env
           docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --no-deps --force-recreate api
           node tests/telnyx-totp-smoke.mjs
-      - name: Verify opt-in strict master bearer lockdown with synthetic credentials
-        run: |
-          sed -i 's/^OPERATOR_TOTP_SECRET=.*/OPERATOR_TOTP_SECRET=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP/' deployment/telnyx/.env
-          sed -i 's/^OPERATOR_BEARER_MODE=.*/OPERATOR_BEARER_MODE=disabled/' deployment/telnyx/.env
-          grep -q '^OPERATOR_BEARER_MODE=disabled$' deployment/telnyx/.env
-          docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --no-deps --force-recreate api
-          node tests/telnyx-lockdown-smoke.mjs
       - name: Seed encrypted test PDF for full recovery rehearsal
         run: bash tests/faxingpro-restore-ci.sh seed "$RUNNER_TEMP/recovery-fixture"
       - name: Exercise real encrypted backup streams and manifest
@@ -134,6 +127,13 @@ jobs:
       - name: Verify encrypted Google Drive uploader with a mocked rclone remote
         run: |
           bash tests/faxingpro-drive-ci.sh "$RUNNER_TEMP/backup-archives"
+      - name: Verify opt-in strict master bearer lockdown with synthetic credentials
+        run: |
+          sed -i 's/^OPERATOR_TOTP_SECRET=.*/OPERATOR_TOTP_SECRET=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP/' deployment/telnyx/.env
+          sed -i 's/^OPERATOR_BEARER_MODE=.*/OPERATOR_BEARER_MODE=disabled/' deployment/telnyx/.env
+          grep -q '^OPERATOR_BEARER_MODE=disabled$' deployment/telnyx/.env
+          docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --no-deps --force-recreate api
+          node tests/telnyx-lockdown-smoke.mjs
       - name: Shutdown test stack
         if: always()
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env down || true
