@@ -48,6 +48,6 @@ This updates the API and static web app without deleting volumes. A database sch
 
 ## What remains
 
-This is the **first named-user RBAC milestone**, not a completed regulated multi-tenant deployment. It does not yet provide email invitations, SSO, password self-service, per-fax ownership segregation, full audit actor attribution, enforceable record retention policies or independent user data isolation. All users in a role see the same workspace's faxes. Existing integrations use independent read-only `fpx_` API tokens. Owners should configure secure HTTPS, rate limiting, recovery and outbound fax permissions before shared use.
+This is the **first named-user RBAC milestone**, not a completed regulated multi-tenant deployment. It does not yet provide email invitations, SSO, password self-service, per-fax ownership segregation, some operational event categories and complete per-user historical attribution, enforceable record retention policies or independent user data isolation. All users in a role see the same workspace's faxes. Existing integrations use independent read-only `fpx_` API tokens. Owners should configure secure HTTPS, rate limiting, recovery and outbound fax permissions before shared use.
 
 CI tests use disposable users, passwords, TOTP keys and Docker volumes. No real customer account is created by a repository update.
