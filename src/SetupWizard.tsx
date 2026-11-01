@@ -7,6 +7,7 @@ import type { SetupState } from './api';
 type Props = {
   mode:'checking'|'signin'|'setup';
   endpoint:string; token:string; setToken:(value:string)=>void;
+  mfaRequired:boolean;otp:string;setOtp:(value:string)=>void;
   setup:SetupState|null;
   working:boolean; error:string;
   onConnect:()=>Promise<void>;onReload:()=>Promise<void>;onRetry:()=>void;
@@ -21,7 +22,7 @@ const timezones=[
   ['UTC','UTC']
 ] as const;
 const steps=['Connect','Check gateway','Workspace'];
-export default function SetupWizard({mode,endpoint,token,setToken,setup,working,error,
+export default function SetupWizard({mode,endpoint,token,setToken,mfaRequired,otp,setOtp,setup,working,error,
   onConnect,onReload,onRetry,onFinish}:Props){
   const [step,setStep]=useState(0);
   const [workspaceName,setWorkspaceName]=useState<string|null>(null);
@@ -70,10 +71,16 @@ export default function SetupWizard({mode,endpoint,token,setToken,setup,working,
             <label>Server address<input type="url" readOnly value={endpoint}/></label>
             <label>Operator API token<input type="password" autoComplete="off" value={token}
               onChange={e=>setToken(e.target.value)} placeholder="Paste API_TOKEN from deployment/telnyx/.env" required/></label>
-            <button className="btn primary setup-cta" disabled={working||!token.trim()} type="submit">
+            {mfaRequired&&<label>Authenticator one-time code
+              <input type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
+                autoComplete="one-time-code" value={otp} required
+                onChange={e=>setOtp(e.target.value.replace(/[^0-9]/g,'').slice(0,6))}
+                placeholder="6-digit authenticator code"/>
+            </label>}
+            <button className="btn primary setup-cta" disabled={working||!token.trim()||(mfaRequired&&!/^[0-9]{6}$/.test(otp))} type="submit">
               {working?'Connecting…':'Connect securely'} <ArrowRight size={17}/></button>
           </form>:<div className="setup-warning"><AlertTriangle size={19}/><span>This static client has no backend on its current origin. Open your self-hosted FaxingPro HTTPS website to complete setup. The GitHub Pages site never accepts operator credentials.</span></div>}
-          <p className="setup-hint">The operator token is <code>API_TOKEN</code>, not your Telnyx API key.</p>
+          <p className="setup-hint">The operator token is <code>API_TOKEN</code>, not your Telnyx API key. If configured on the VPS, browser sign-in also requires an authenticator code; direct Bearer API_TOKEN access remains single-factor.</p>
           {error&&<button className="btn secondary" type="button" onClick={onRetry} disabled={working}>
             <RefreshCw size={16}/> Retry server check</button>}
         </div>}
