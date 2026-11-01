@@ -41,7 +41,8 @@
 | Encrypted local backups | Implemented | Streamed PostgreSQL, fax-volume and env archives encrypted to off-VPS age recipient |
 | Google Drive backup integration | Implemented | rclone uploader, checksum comparison, offsite status and scheduled post-backup hook |
 | Full disaster-recovery rehearsal | Staging procedure available; real drill pending | Staging-only [offsite archive download, verification, isolated DB/file restore](docs/STAGING_RECOVERY_REHEARSAL.md); real Drive archive not yet rehearsed |
-| MFA, user roles, retention policy | Future work | Not ready for shared or regulated operations |
+| Named team accounts and roles | First functional milestone | Admin-managed accounts; Viewer, Operator, Administrator server-enforced permissions; mandatory individual password + TOTP, credential rotation and immediate disable; [guide](docs/NAMED_TEAM_ACCOUNTS.md) |
+| Full production identity/retention policy | Future work | Independent account invitation, audit attribution, user self-service, formal retention and compliance not complete |
 
 ## Screens and workflows
 
@@ -65,7 +66,7 @@ ATLAS provides Dashboard, Inbox, Sent Faxes, New Fax, Contacts, Documents, Archi
 
 **Optional browser TOTP and master Bearer lockdown:** `OPERATOR_TOTP_SECRET` challenges new browser logins. By default, `OPERATOR_BEARER_MODE=legacy` keeps old master API_TOKEN scripts working and is a single-factor bypass. The optional `disabled` policy rejects privileged master bearer requests and requires TOTP-assured browser sessions. Both controls require deliberate production configuration and do **not** add named users or roles. See [browser TOTP](docs/OPERATOR_TOTP.md) and [Bearer lockdown rollout](docs/MASTER_BEARER_LOCKDOWN.md). Pulling GitHub code alone enables neither.
 
-**Security:** A single operator signs in using `API_TOKEN` in a same-origin HTTPS session; invalid-token submissions are throttled and security events are recorded in PostgreSQL. Neither the bearer key nor the Google Drive private tokens should be committed to source control.
+**Security:** Owners can still sign in using `API_TOKEN`; administrators can now create named accounts with independent credentials and roles. In default legacy bearer mode the master token remains an owner override. New named users must always use an authenticator code. See [team accounts](docs/NAMED_TEAM_ACCOUNTS.md). A single operator previously signed in using `API_TOKEN` in a same-origin HTTPS session; invalid-token submissions are throttled and security events are recorded in PostgreSQL. Neither the bearer key nor the Google Drive private tokens should be committed to source control.
 
 ## Easy Ubuntu VPS installer
 
@@ -346,7 +347,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 
 ## Known limitations
 
-- Currently **single-operator**. Optional TOTP and bearer lockdown exist, but named accounts, role-specific authorization and formal recovery enrollment are not implemented.
+- Named team account role enforcement is available. Formal invitations, individual account self-service, full audit attribution and compliant retention remain incomplete.
 - Outbound faxing is constrained to the configured test destination until a dedicated sender-safety rollout is approved.
 - Contact changes are not automatically synchronized with Telnyx or external CRMs.
 - Reporting includes 30-day daily activity but lacks full usage/cost analytics; email/SMS alerts, retention policies and controlled sending retries still need implementation. The read-only reconciliation queue does not resolve provider outcomes or authorize retransmission.
@@ -359,6 +360,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 - [Signed webhook reliability and reconciliation safeguards](docs/WEBHOOK_RELIABILITY.md)
 - [Security and operator sessions](docs/SECURITY_SESSIONS.md)
 - [Opt-in master bearer lockdown](docs/MASTER_BEARER_LOCKDOWN.md)
+- [Named team accounts and role permissions](docs/NAMED_TEAM_ACCOUNTS.md)
 - [PostgreSQL and encrypted document recovery](docs/BACKUP_RECOVERY.md)
 - [Google Drive setup](docs/GOOGLE_DRIVE_BACKUPS.md)
 - [Developer environment](docs/DEVELOPMENT.md)
