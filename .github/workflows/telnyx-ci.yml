@@ -18,6 +18,7 @@ on:
       - 'tests/prepare-telnyx-ci.mjs'
       - 'src/api.ts'
       - 'src/App.tsx'
+      - 'src/SetupWizard.tsx'
       - 'src/ReconciliationPanel.tsx'
       - 'src/RetentionPreview.tsx'
       - 'src/ContactsManager.tsx'
@@ -66,6 +67,7 @@ jobs:
         run: |
           node --check server/telnyx.mjs
           node --check server/telnyx-utils.mjs
+          node --check server/operator-totp.mjs
       - name: Run API and webhook security tests
         run: npm test
       - name: Prepare ephemeral signed-webhook fixture and Compose secrets
@@ -91,6 +93,11 @@ jobs:
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --build
       - name: Verify signed webhooks, auth, and persistent fax rows
         run: node tests/telnyx-smoke.mjs
+      - name: Verify opt-in browser TOTP after synthetic session smoke
+        run: |
+          printf '\nOPERATOR_TOTP_SECRET=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ\n' >> deployment/telnyx/.env
+          docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --no-deps --force-recreate api
+          node tests/telnyx-totp-smoke.mjs
       - name: Seed encrypted test PDF for full recovery rehearsal
         run: bash tests/faxingpro-restore-ci.sh seed "$RUNNER_TEMP/recovery-fixture"
       - name: Exercise real encrypted backup streams and manifest

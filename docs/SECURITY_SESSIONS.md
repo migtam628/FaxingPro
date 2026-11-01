@@ -44,7 +44,7 @@ curl -fsS https://fax.mttechservicesllc.com/healthz
 
 Changing the master token invalidates existing browser sessions because session validation checks its fingerprint. **It does not delete or rotate previously generated integration tokens**—revoke those individually if compromise is suspected. Changing `STORAGE_ENCRYPTION_KEY` is a separate, potentially destructive recovery-key migration and must never be used as a routine login-token rotation.
 
-**Current limitations:** No MFA, individual named user accounts, delegated write scopes, automatic secrets rotation, or per-user role assignments. This remains a single-operator pilot. A full production deployment requires layered edge/rate protections, audit retention, tested recovery and a security review.
+**Current limitations:** There is an opt-in [browser-session-only TOTP challenge](OPERATOR_TOTP.md), but the master `API_TOKEN` bearer path remains **single-factor**, so full MFA is **not yet implemented**. No individual named user accounts, delegated write scopes, automatic secrets rotation, or per-user role assignments. This remains a single-operator pilot. A full production deployment requires layered edge/rate protections, audit retention, tested recovery and a security review.
 
 ## Deploy the update
 
@@ -67,3 +67,7 @@ The migrations add two small tables (`operator_login_failures`, `operator_securi
 - The audit table records only bounded failed-login events during a throttle window and needs retention/alerting as the project grows.
 - The seven-day cookie sessions are bearer-like credentials and need normal browser hardening, revocation, and TLS.
 - Offsite Google Drive archives should be confirmed separately by checking ATLAS → Backup & Recovery, downloading an encrypted backup to a trusted device, and validating its decryption. A Drive upload record proves only that the encrypted archive matched at upload time; it does not prove a full restore.
+
+## Opt-in browser-session TOTP (v0.8)
+
+The [operator TOTP runbook](OPERATOR_TOTP.md) covers deliberate setup, recovery, clock synchronization and limitations. Without a configured `OPERATOR_TOTP_SECRET`, login behavior remains unchanged; the operator can still authenticate using the existing API_TOKEN. If enabled, the first-run login form requests a 6-digit authenticator code, and PostgreSQL prevents a successfully accepted 30-second time step from being reused across sessions. This is a **browser-session hardening only** and does not protect requests already authenticated using the legacy master Bearer API_TOKEN.

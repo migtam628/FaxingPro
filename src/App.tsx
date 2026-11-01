@@ -82,6 +82,8 @@ export default function App(){
     return window.location.origin;
   });
   const [apiToken,setApiToken]=useState('');
+  const [oneTimeCode,setOneTimeCode]=useState('');
+  const [mfaRequired,setMfaRequired]=useState(false);
   const [health,setHealth]=useState<Health|null>(null);
   const [liveFaxes,setLiveFaxes]=useState<Fax[]|null>(null);
   const [stats,setStats]=useState<FaxStats|null>(null);
@@ -107,6 +109,7 @@ export default function App(){
     let cancelled=false;
     (async()=>{
       const session=await getSession(endpoint);
+      if(!cancelled)setMfaRequired(!!session.mfaRequired);
       if(!session.authenticated){
         if(!cancelled)setBoot('signin');
         return;
@@ -197,7 +200,7 @@ export default function App(){
     if(!window.confirm('Revoke every active FaxingPro session, including this browser? You will need the API_TOKEN to sign in again.'))return;
     try{
       await revokeAllSessions(apiEndpoint);
-      setBoot('signin');setApiToken('');setHealth(null);setLiveFaxes(null);
+      setBoot('signin');setApiToken('');setOneTimeCode('');setHealth(null);setLiveFaxes(null);
       setStats(null);setSecurityStatus(null);setSecurityError('');
     }catch(error){setSecurityError(error instanceof Error?error.message:'Session revocation failed');}
   }
@@ -287,10 +290,10 @@ export default function App(){
     setTesting(true);setSetupError('');
     try{
       const status=await checkApi(endpoint);
-      const session=apiToken.trim()?await createSession(endpoint,apiToken.trim()):await getSession(endpoint);
+      const session=apiToken.trim()?await createSession(endpoint,apiToken.trim(),oneTimeCode.trim()):await getSession(endpoint);
       if(!session.authenticated)throw Error('Enter a valid API_TOKEN from your VPS.');
       const [details,items,counters]=await Promise.all([getSetup(endpoint),listFaxes(endpoint),getStats(endpoint)]);
-      setApiToken('');
+      setApiToken('');setOneTimeCode('');setMfaRequired(!!session.mfaRequired);
       setSetupInfo(details);setHealth(status);setLiveFaxes(items.map(serverToFax));setStats(counters);
       setBoot(details.complete?'ready':'setup');
       setToast('Connected securely. Your session is retained for seven days.');
@@ -317,7 +320,7 @@ export default function App(){
   async function signOut(){
     try{await destroySession(apiEndpoint);}
     catch(error){setToast(error instanceof Error?error.message:'Unable to sign out');return;}
-    setApiToken('');setHealth(null);setLiveFaxes(null);setStats(null);
+    setApiToken('');setOneTimeCode('');setHealth(null);setLiveFaxes(null);setStats(null);
     setBoot('signin');setSetupError('');
   }
   async function sendFax(){
@@ -339,6 +342,7 @@ export default function App(){
   if(window.location.hostname.endsWith('.github.io'))return <PublicLanding/>;
   if(boot!=='ready'){
     return <SetupWizard mode={boot} endpoint={apiEndpoint}
+      mfaRequired={mfaRequired} otp={oneTimeCode} setOtp={setOneTimeCode}
       token={apiToken} setToken={setApiToken} setup={setupInfo} working={testing}
       error={setupError} onConnect={testConnection} onReload={recheckSetup}
       onRetry={()=>{setBoot('checking');setSetupError('');setBootRetry(n=>n+1);}}
@@ -507,7 +511,7 @@ export default function App(){
             <div className="settings-card"><AlertTriangle size={22}/><div><strong>Invalid operator logins in last 24 hours</strong>
               <p>{securityStatus?String(securityStatus.failedLogins24h):'Loading audit data...'}</p></div></div>
             <div className="settings-card"><Archive size={22}/><div><strong>Additional security still required</strong>
-              <p>MFA, per-user roles, automated abuse monitoring and formal data-retention controls remain future work. Don't treat this as a multi-user or regulated-data-ready release.</p></div></div>
+              <p>Browser TOTP: {securityStatus?.mfaEnabled?'Enabled (browser sessions only)':'Not configured'}. Master API_TOKEN bearer access still bypasses TOTP. Independent user accounts, full MFA, role controls and retention policies remain future work.</p></div></div>
             <div className="backup-history"><h3>Recent operator security events</h3>
               {securityStatus?.events.length?securityStatus.events.map((event,index)=>
                 <div className="backup-record" key={index}>

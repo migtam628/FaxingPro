@@ -3,11 +3,16 @@ import {randomUUID,timingSafeEqual,randomBytes,createHash} from 'node:crypto';
 import {mkdir,readFile,writeFile,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
+import {decodeTotpSecret,matchTotp,fingerprintTotp} from './operator-totp.mjs';
 import {e164US,pdfValid,cleanName,statusFor,webhookKey,verifyWebhook,
   signMedia,mediaAuthorized,safeIncomingUrl,encryptPdf,decryptPdf} from './telnyx-utils.mjs';
 
 const e=process.env, port=Number(e.PORT||8088), dir=e.FILE_DIR||'/data/files';
 const secret=e.API_TOKEN||'', mediaSecret=e.MEDIA_SIGNING_SECRET||'', storageKey=e.STORAGE_ENCRYPTION_KEY||'';
+// Optional browser-session second factor; master Bearer API_TOKEN remains an
+// administrative bypass until independent user identities are introduced.
+const totpKey=e.OPERATOR_TOTP_SECRET?decodeTotpSecret(e.OPERATOR_TOTP_SECRET):null;
+const totpFingerprint=totpKey?fingerprintTotp(totpKey):null;
 const base=(e.TELNYX_PUBLIC_BASE_URL||'').replace(/\/$/,'');
 const faxApp=e.TELNYX_FAX_APP_ID||'',did=e.TELNYX_FROM_NUMBER||'';
 const sending=e.SEND_ENABLED==='true',destination=e.TEST_DESTINATION||'';
@@ -92,7 +97,7 @@ const tokenPublic=r=>({
 const operatorSession=async(req,res)=>{
   if(req.method==='GET'){
     const active=await currentSession(req);
-    return output(res,200,{authenticated:!!active,expiresAt:active?.expires_at||null});
+    return output(res,200,{authenticated:!!active,expiresAt:active?.expires_at||null,mfaRequired:!!totpKey});
   }
   if(req.method==='DELETE'){
     const raw=sessionCookie(req);
@@ -100,7 +105,7 @@ const operatorSession=async(req,res)=>{
       const result=await db.query('DELETE FROM operator_sessions WHERE token_hash=$1',[sessionHash(raw)]);
       if(result.rowCount)await auditSecurity('logout');
     }
-    return output(res,200,{authenticated:false},{'Set-Cookie':cookieClear});
+    return output(res,200,{authenticated:false,mfaRequired:!!totpKey},{'Set-Cookie':cookieClear});
   }
   if(req.method!=='POST')return output(res,405,{error:'Method not allowed'},{Allow:'GET, POST, DELETE'});
   if(!(req.headers['content-type']||'').startsWith('application/json'))
@@ -108,13 +113,29 @@ const operatorSession=async(req,res)=>{
   let payload;
   try{payload=JSON.parse((await body(req,4096)).toString('utf8'));}
   catch{return output(res,400,{error:'Invalid request'});}
-  if(!tokenMatches(payload?.token)){
+  const primaryValid=tokenMatches(payload?.token);
+  const acceptedStep=primaryValid&&totpKey?matchTotp(totpKey,payload?.otp):null;
+  if(!primaryValid || (totpKey&&acceptedStep===null)){
     const count=await failedLogin();
     if(count<=maxFailedLogins)await auditSecurity('login_failure');
     if(count>=maxFailedLogins)
       return output(res,429,{error:'Too many invalid sign-in attempts. Retry later or use the correct operator token.'},
         {'Retry-After':'900'});
-    return output(res,401,{error:'Invalid operator token'});
+    return output(res,401,{error:totpKey?'Invalid operator token or one-time code':'Invalid operator token'});
+  }
+  if(totpKey){
+    // One-time codes cannot be replayed across browser sessions or API replicas.
+    // A rotated secret creates a new independent anti-replay sequence.
+    const {rows}=await db.query(
+      "INSERT INTO operator_totp_use(id,secret_fingerprint,last_step) VALUES(1,$1,$2) "+
+      "ON CONFLICT(id) DO UPDATE SET secret_fingerprint=EXCLUDED.secret_fingerprint, "+
+      "last_step=EXCLUDED.last_step WHERE operator_totp_use.secret_fingerprint<>EXCLUDED.secret_fingerprint "+
+      "OR operator_totp_use.last_step<EXCLUDED.last_step RETURNING id",
+      [totpFingerprint,acceptedStep]);
+    if(!rows.length){
+      await auditSecurity('totp_replay_rejected');
+      return output(res,401,{error:'One-time code already used. Wait for the next code.'});
+    }
   }
   await db.query('DELETE FROM operator_login_failures WHERE id=1');
   const raw=randomBytes(32).toString('base64url');
@@ -123,7 +144,7 @@ const operatorSession=async(req,res)=>{
     [sessionHash(raw),tokenFingerprint,expires]);
   await auditSecurity('login_success');
   const cookie=cookieName+'='+raw+'; '+cookieBase+'; Max-Age=604800';
-  return output(res,200,{authenticated:true,expiresAt:expires.toISOString()},{'Set-Cookie':cookie});
+  return output(res,200,{authenticated:true,expiresAt:expires.toISOString(),mfaRequired:!!totpKey},{'Set-Cookie':cookie});
 };
 const body=async(req,limit)=>{let len=0;const chunks=[];for await(const c of req){len+=c.length;
   if(len>limit)throw Error('Body exceeds size limit');chunks.push(c);}return Buffer.concat(chunks);};
@@ -172,6 +193,8 @@ const setup=async()=>{
   await db.query("CREATE TABLE IF NOT EXISTS operator_sessions ("+
     "token_hash TEXT PRIMARY KEY,token_fingerprint TEXT NOT NULL,"+
     "expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ DEFAULT now())");
+  await db.query("CREATE TABLE IF NOT EXISTS operator_totp_use ("+
+    "id INTEGER PRIMARY KEY CHECK(id=1),secret_fingerprint TEXT NOT NULL,last_step BIGINT NOT NULL)");
   await db.query("CREATE TABLE IF NOT EXISTS api_tokens ("+
     "id UUID PRIMARY KEY,name TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,"+
     "prefix TEXT NOT NULL,scopes TEXT[] NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"+
@@ -445,7 +468,7 @@ const app=http.createServer(async(req,res)=>{
           activeSessions:sessionData.rows[0].count,
           failedLogins24h:failuresData.rows[0].count,
           events:eventsData.rows,
-          mode:'single-operator',mfaEnabled:false
+          mode:'single-operator',mfaEnabled:!!totpKey,mfaScope:'browser-session-only'
         });
       }
       if(req.method==='DELETE'&&p==='/api/sessions'){
