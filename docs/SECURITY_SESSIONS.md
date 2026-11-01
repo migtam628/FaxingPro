@@ -75,3 +75,7 @@ The [operator TOTP runbook](OPERATOR_TOTP.md) covers deliberate setup, recovery,
 ## Optional master bearer lockdown
 
 The [safe lockdown and rollback guide](MASTER_BEARER_LOCKDOWN.md) documents `OPERATOR_BEARER_MODE=disabled`, strict TOTP prerequisites, session assurance migration, impact on legacy API automation and operating limits. This policy is deliberately disabled until an operator verifies a fresh authenticated login and the rollback procedure. No code pull or release artifact automatically enables it.
+
+## Named team accounts (first functional milestone)
+
+Administrators can provision individual passwords and mandatory TOTP keys through the Team Members page, set Viewer/Operator/Administrator roles, rotate credentials and disable users. New account secrets are shown only once. The API applies a deny-by-default allowlist for non-admin roles and immediately invalidates disabled users' sessions. The owner API_TOKEN still provides recovery and full access in default legacy mode. Formal invitation delivery, account self-service, complete user attribution and regulated deployment review are future work. See [NAMED_TEAM_ACCOUNTS.md](NAMED_TEAM_ACCOUNTS.md).
