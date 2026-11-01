@@ -35,6 +35,7 @@
 | Manual outbound reconciliation | Implemented in v0.8 (read-only) | Authenticated queue review for unknown or stalled outbound jobs with correlated signed webhook history; never retries or changes status |
 | Retention impact preview | Implemented in v0.8 (read-only) | Operator-only age-window aggregate in Backup & Recovery; no policy, deletion, or automatic cleanup |
 | Sessions and security history | Implemented | Seven-day secure cookie, failed-login throttling, session counts, revoke-all and operator audit |
+| Optional browser TOTP sign-in | Opt-in v0.8 security milestone | RFC 6238 one-time code plus API_TOKEN required to issue browser session when configured; replay-resistant; **master Bearer token remains a bypass**; [limitations/setup](docs/OPERATOR_TOTP.md) |
 | Read-only integration API Token Manager | Implemented in v0.8 | Operator-only create/list/revoke, hashed credentials, 7/30/90-day expiry, last use and scoped permissions |
 | Encrypted local backups | Implemented | Streamed PostgreSQL, fax-volume and env archives encrypted to off-VPS age recipient |
 | Google Drive backup integration | Implemented | rclone uploader, checksum comparison, offsite status and scheduled post-backup hook |
@@ -60,6 +61,8 @@ ATLAS provides Dashboard, Inbox, Sent Faxes, New Fax, Contacts, Documents, Archi
 **Offsite recovery rehearsal:** The [staging-only recovery runbook](docs/STAGING_RECOVERY_REHEARSAL.md) and `scripts/faxingpro-staging-recovery.sh` support downloading a selected encrypted Drive snapshot, verifying age/manifest integrity, and rehearsing a network-isolated PostgreSQL and encrypted-PDF restore on a different trusted Linux host. This is **not deployed on your VPS**, and no real offsite restore is claimed until you execute and document it on staging.
 
 **Independent backup health:** For monitoring outside the ATLAS notification feed, run the [opt-in independent backup monitor](docs/BACKUP_HEALTH_MONITOR.md). It verifies the newest local encrypted archive against its checksum manifest, checks the backup timer/job and probes actual Google Drive read access and the latest remote archive. Its own daily systemd unit and optional HTTPS webhook are **not enabled by a code update**. No documents are deleted or modified. A full restoration rehearsal is still required.
+
+**Optional browser TOTP:** A root-managed `OPERATOR_TOTP_SECRET` can add an authenticator code to the browser login; this does not protect direct API calls using the master Bearer token and is **not full administrator MFA**. See [optional browser TOTP hardening](docs/OPERATOR_TOTP.md). The feature is disabled by default and never changes the live VPS merely through a Git pull.
 
 **Security:** A single operator signs in using `API_TOKEN` in a same-origin HTTPS session; invalid-token submissions are throttled and security events are recorded in PostgreSQL. Neither the bearer key nor the Google Drive private tokens should be committed to source control.
 
