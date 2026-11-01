@@ -35,7 +35,8 @@
 | Manual outbound reconciliation | Implemented in v0.8 (read-only) | Authenticated queue review for unknown or stalled outbound jobs with correlated signed webhook history; never retries or changes status |
 | Retention impact preview | Implemented in v0.8 (read-only) | Operator-only age-window aggregate in Backup & Recovery; no policy, deletion, or automatic cleanup |
 | Sessions and security history | Implemented | Seven-day secure cookie, failed-login throttling, session counts, revoke-all and operator audit |
-| Optional browser TOTP sign-in | Opt-in v0.8 security milestone | RFC 6238 one-time code plus API_TOKEN required to issue browser session when configured; replay-resistant; **master Bearer token remains a bypass**; [limitations/setup](docs/OPERATOR_TOTP.md) |
+| Optional browser TOTP sign-in | Opt-in v0.8 security milestone | RFC 6238 one-time code plus API_TOKEN required for a browser session, with replay protection; [setup](docs/OPERATOR_TOTP.md) |
+| Master bearer lockdown | Opt-in, disabled by default | `OPERATOR_BEARER_MODE=disabled` rejects the privileged API_TOKEN Bearer bypass; requires TOTP and rejects non-assured sessions; [safe rollout/rollback](docs/MASTER_BEARER_LOCKDOWN.md) |
 | Read-only integration API Token Manager | Implemented in v0.8 | Operator-only create/list/revoke, hashed credentials, 7/30/90-day expiry, last use and scoped permissions |
 | Encrypted local backups | Implemented | Streamed PostgreSQL, fax-volume and env archives encrypted to off-VPS age recipient |
 | Google Drive backup integration | Implemented | rclone uploader, checksum comparison, offsite status and scheduled post-backup hook |
@@ -62,7 +63,7 @@ ATLAS provides Dashboard, Inbox, Sent Faxes, New Fax, Contacts, Documents, Archi
 
 **Independent backup health:** For monitoring outside the ATLAS notification feed, run the [opt-in independent backup monitor](docs/BACKUP_HEALTH_MONITOR.md). It verifies the newest local encrypted archive against its checksum manifest, checks the backup timer/job and probes actual Google Drive read access and the latest remote archive. Its own daily systemd unit and optional HTTPS webhook are **not enabled by a code update**. No documents are deleted or modified. A full restoration rehearsal is still required.
 
-**Optional browser TOTP:** A root-managed `OPERATOR_TOTP_SECRET` can add an authenticator code to the browser login; this does not protect direct API calls using the master Bearer token and is **not full administrator MFA**. See [optional browser TOTP hardening](docs/OPERATOR_TOTP.md). The feature is disabled by default and never changes the live VPS merely through a Git pull.
+**Optional browser TOTP and master Bearer lockdown:** `OPERATOR_TOTP_SECRET` challenges new browser logins. By default, `OPERATOR_BEARER_MODE=legacy` keeps old master API_TOKEN scripts working and is a single-factor bypass. The optional `disabled` policy rejects privileged master bearer requests and requires TOTP-assured browser sessions. Both controls require deliberate production configuration and do **not** add named users or roles. See [browser TOTP](docs/OPERATOR_TOTP.md) and [Bearer lockdown rollout](docs/MASTER_BEARER_LOCKDOWN.md). Pulling GitHub code alone enables neither.
 
 **Security:** A single operator signs in using `API_TOKEN` in a same-origin HTTPS session; invalid-token submissions are throttled and security events are recorded in PostgreSQL. Neither the bearer key nor the Google Drive private tokens should be committed to source control.
 
@@ -306,7 +307,7 @@ unset FAXINGPRO_READ_TOKEN
 
 Read-only tokens **cannot** exchange themselves for browser operator sessions, download encrypted fax PDFs, send/retry fax jobs, change backups, manage sessions, or create/revoke other tokens. An integration token passed in an explicit `Authorization` header cannot inherit administrator authority from a browser cookie. Expired and revoked tokens stop working immediately; listing tokens never returns their secret.
 
-**Rotating the master `API_TOKEN` still requires VPS administration**, and recreating the API container to load the new environment value. The UI currently manages *integration tokens*, not the original master administrator token. No user accounts, MFA or scoped write/sending tokens are implemented. For detailed controls and safe CLI rotation, see [Security & Sessions](docs/SECURITY_SESSIONS.md).
+**Rotating the master `API_TOKEN` still requires VPS administration**, and recreating the API container to load the new environment value. The UI currently manages *integration tokens*, not the original master administrator token. No named user accounts, role-based privileges, or scoped write/sending tokens are implemented. Optional single-operator TOTP and master bearer lockdown require deliberate configuration. For detailed controls and safe CLI rotation, see [Security & Sessions](docs/SECURITY_SESSIONS.md).
 
 ## Backup & Recovery
 
@@ -345,7 +346,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 
 ## Known limitations
 
-- Currently **single-operator**. MFA, separate user accounts and per-role authorization are not implemented.
+- Currently **single-operator**. Optional TOTP and bearer lockdown exist, but named accounts, role-specific authorization and formal recovery enrollment are not implemented.
 - Outbound faxing is constrained to the configured test destination until a dedicated sender-safety rollout is approved.
 - Contact changes are not automatically synchronized with Telnyx or external CRMs.
 - Reporting includes 30-day daily activity but lacks full usage/cost analytics; email/SMS alerts, retention policies and controlled sending retries still need implementation. The read-only reconciliation queue does not resolve provider outcomes or authorize retransmission.
@@ -357,6 +358,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 - [Deployment and Telnyx API](docs/TELNYX_API_DEPLOYMENT.md)
 - [Signed webhook reliability and reconciliation safeguards](docs/WEBHOOK_RELIABILITY.md)
 - [Security and operator sessions](docs/SECURITY_SESSIONS.md)
+- [Opt-in master bearer lockdown](docs/MASTER_BEARER_LOCKDOWN.md)
 - [PostgreSQL and encrypted document recovery](docs/BACKUP_RECOVERY.md)
 - [Google Drive setup](docs/GOOGLE_DRIVE_BACKUPS.md)
 - [Developer environment](docs/DEVELOPMENT.md)
