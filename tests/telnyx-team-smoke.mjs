@@ -57,7 +57,27 @@ assert.equal((await request('/api/team/users',{headers:browser})).status,200,
 assert.equal((await request('/api/team/users/'+id,{method:'PATCH',
   headers:{...browser,'Content-Type':'application/json','X-FaxingPro-Action':'team-manager'},
   body:JSON.stringify({disabled:true})})).status,403,'Admin cannot disable own account');
+const rotated=await request('/api/team/users/'+id+'/reset',{
+  method:'POST',headers:{...management}});
+assert.equal(rotated.status,200);
+const replacement=await rotated.json();
+assert.equal((await request('/api/faxes',{headers:browser})).status,401,
+  'Credential recovery must revoke the old session immediately');
+const oldPassword=await request('/api/session',{method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({email,password:data.credentials.password,otp:code})});
+assert.equal(oldPassword.status,401);
+const replacementCode=totpAtStep(decodeTotpSecret(replacement.credentials.totpSecret),Math.floor(Date.now()/30000));
+const freshLogin=await request('/api/session',{method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({email,password:replacement.credentials.password,otp:replacementCode})});
+assert.equal(freshLogin.status,200);
+const freshCookie=freshLogin.headers.get('set-cookie')?.split(';')[0];
+assert.ok(freshCookie);
+assert.equal((await request('/api/team/users',{headers:{Cookie:freshCookie}})).status,200);
 assert.equal((await change({disabled:true})).status,200);
+assert.equal((await request('/api/team/users',{headers:{Cookie:freshCookie}})).status,401,
+  'Disabled user loses newly rotated sessions');
 assert.equal((await request('/api/faxes',{headers:browser})).status,401,'Disabled user sessions must be revoked immediately');
 assert.equal((await (await request('/api/session',{headers:browser})).json()).authenticated,false);
 assert.equal((await request('/api/team/users',{headers:browser})).status,401);
