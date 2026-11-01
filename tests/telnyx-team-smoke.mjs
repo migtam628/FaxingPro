@@ -47,7 +47,7 @@ const replay=await request('/api/session',{method:'POST',headers:{'Content-Type'
 assert.equal(replay.status,401,'One-time code cannot be used twice');
 const change=(payload)=>request('/api/team/users/'+id,{method:'PATCH',headers:management,body:JSON.stringify(payload)});
 assert.equal((await change({role:'operator'})).status,200);
-const changePrefs=await request('/api/notification-preferences',{method:'PATCH',
+const changePrefs=await request('/api/notifications/preferences',{method:'PATCH',
   headers:{...browser,'Content-Type':'application/json'},body:JSON.stringify({browserEnabled:false})});
 assert.equal(changePrefs.status,200,'Operator role upgrade must take effect without re-login');
 assert.equal((await request('/api/team/users',{headers:browser})).status,403);
