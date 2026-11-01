@@ -38,7 +38,7 @@
 | Read-only integration API Token Manager | Implemented in v0.8 | Operator-only create/list/revoke, hashed credentials, 7/30/90-day expiry, last use and scoped permissions |
 | Encrypted local backups | Implemented | Streamed PostgreSQL, fax-volume and env archives encrypted to off-VPS age recipient |
 | Google Drive backup integration | Implemented | rclone uploader, checksum comparison, offsite status and scheduled post-backup hook |
-| Full disaster-recovery rehearsal | Operator action | Independently restore both DB and files on a separate isolated staging host |
+| Full disaster-recovery rehearsal | Staging procedure available; real drill pending | Staging-only [offsite archive download, verification, isolated DB/file restore](docs/STAGING_RECOVERY_REHEARSAL.md); real Drive archive not yet rehearsed |
 | MFA, user roles, retention policy | Future work | Not ready for shared or regulated operations |
 
 ## Screens and workflows
@@ -56,6 +56,8 @@ ATLAS provides Dashboard, Inbox, Sent Faxes, New Fax, Contacts, Documents, Archi
 **Retention planning:** Backup & Recovery now includes a read-only retention impact preview for 30, 90, 180, 365, 730 or 1825 days. It reports how many fax records are older than the selected threshold, separated into archived terminal, active terminal and nonterminal states, and counts records with attached documents. This is a **planning estimate, not a configured retention policy**; no records, encrypted PDFs, backups, or volumes are deleted. The operator-only endpoint is `GET /api/retention/preview?days=365`. See [retention preview guide](docs/RETENTION_PREVIEW.md).
 
 **Notifications:** The bell in ATLAS displays actual unread incoming faxes, failed transmissions and backup-health warnings. The operator can open the corresponding fax or navigate to Backup & Recovery, refresh alerts, and opt into desktop notifications with browser permission. FaxingPro polls every 60 seconds; this is **not instantaneous server push**. Local backup warnings use PostgreSQL records: no backup completed, the latest archive more than 36 hours old, or no Google Drive checksum record for the newest local archive after 2 hours. **These alerts do not probe live Google Drive availability or prove backup restoration.** No third-party notification services or fake fax activity feed are used.
+
+**Offsite recovery rehearsal:** The [staging-only recovery runbook](docs/STAGING_RECOVERY_REHEARSAL.md) and `scripts/faxingpro-staging-recovery.sh` support downloading a selected encrypted Drive snapshot, verifying age/manifest integrity, and rehearsing a network-isolated PostgreSQL and encrypted-PDF restore on a different trusted Linux host. This is **not deployed on your VPS**, and no real offsite restore is claimed until you execute and document it on staging.
 
 **Independent backup health:** For monitoring outside the ATLAS notification feed, run the [opt-in independent backup monitor](docs/BACKUP_HEALTH_MONITOR.md). It verifies the newest local encrypted archive against its checksum manifest, checks the backup timer/job and probes actual Google Drive read access and the latest remote archive. Its own daily systemd unit and optional HTTPS webhook are **not enabled by a code update**. No documents are deleted or modified. A full restoration rehearsal is still required.
 
