@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {UserPlus,ShieldCheck,RefreshCw,AlertTriangle,Users,LockKeyhole} from 'lucide-react';
-import {listTeamMembers,createTeamMember,updateTeamMember,type TeamMember} from './api';
+import {listTeamMembers,createTeamMember,updateTeamMember,rotateTeamCredentials,type TeamMember} from './api';
 
 type Props={endpoint:string;administrator:boolean;currentUserId:string|null};
 export default function TeamMembers({endpoint,administrator,currentUserId}:Props){
@@ -29,6 +29,16 @@ export default function TeamMembers({endpoint,administrator,currentUserId}:Props
       setItems((prev)=>[result.user,...prev]);
       setMessage('Member created. Deliver the credentials securely outside FaxingPro.');
     }catch(e){setError(e instanceof Error?e.message:'Member creation failed');}
+    finally{setWorking(false);}
+  }
+  async function resetCredentials(member:TeamMember){
+    if(!window.confirm('Rotate all credentials for '+member.email+' and immediately revoke every session?'))return;
+    setWorking(true);setError('');setOneTime(null);
+    try{
+      const result=await rotateTeamCredentials(endpoint,member.id);
+      setOneTime({email:result.email,...result.credentials});
+      setMessage('All existing sessions revoked. Deliver the new credentials securely.');
+    }catch(e){setError(e instanceof Error?e.message:'Account recovery failed');}
     finally{setWorking(false);}
   }
   async function change(member:TeamMember,update:{role:TeamMember['role']}|{disabled:boolean}){
@@ -84,6 +94,8 @@ export default function TeamMembers({endpoint,administrator,currentUserId}:Props
             value={member.role} onChange={e=>void change(member,{role:e.target.value as TeamMember['role']})}>
             <option value="viewer">Viewer</option><option value="operator">Operator</option><option value="admin">Admin</option>
           </select>
+          <button className="btn secondary" disabled={working||currentUserId===member.id}
+            onClick={()=>void resetCredentials(member)}>Rotate credentials</button>
           <button className="btn secondary" disabled={working||currentUserId===member.id}
             onClick={()=>void change(member,{disabled:!member.disabledAt})}>
               {member.disabledAt?'Enable':'Disable'}
