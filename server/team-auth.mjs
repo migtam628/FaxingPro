@@ -48,13 +48,13 @@ export function teamRoleAllows(role,method,path){
   const uuid='[0-9a-f-]{36}';
   const read=[
     '/api/faxes','/api/stats','/api/reports/daily','/api/contacts','/api/notifications',
-    '/api/notification-preferences','/api/reconciliation',
+    '/api/notifications/preferences','/api/reconciliation',
   ];
   if(method==='GET'&&(read.includes(path)||
       new RegExp('^/api/faxes/'+uuid+'/(document|events)$','i').test(path)))return true;
   if(role==='viewer')return false;
   if(method==='POST'&&['/api/faxes','/api/contacts'].includes(path))return true;
-  if(method==='PATCH'&&(path==='/api/notification-preferences'||
+  if(method==='PATCH'&&(path==='/api/notifications/preferences'||
       new RegExp('^/api/faxes/'+uuid+'/(read|archive)$','i').test(path)||
       new RegExp('^/api/contacts/'+uuid+'$','i').test(path)))return true;
   if(method==='DELETE'&&new RegExp('^/api/contacts/'+uuid+'$','i').test(path))return true;
