@@ -477,6 +477,77 @@ const app=http.createServer(async(req,res)=>{
       if(auth.kind==='restricted')return output(res,403,{error:'Integration token is expired, revoked or lacks permission for this endpoint'});
       if(auth.kind==='team'&&!teamRoleAllows(auth.role,req.method,p))
         return output(res,403,{error:'Your workspace role does not permit this action'});
+      if(p==='/api/team/me'&&req.method==='GET'){
+        return output(res,200,{identity:auth.userId?(
+          await db.query('SELECT id,email,display_name AS name,role FROM team_users WHERE id=$1',[auth.userId])
+        ).rows[0]||null:{id:null,email:null,name:'Owner',role:'admin'}});
+      }
+      if(p==='/api/team/users'){
+        if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
+        if(req.method==='GET'){
+          const {rows}=await db.query(
+            'SELECT id,email,display_name AS name,role,disabled_at AS "disabledAt",created_at AS "createdAt" '+
+            'FROM team_users ORDER BY created_at DESC LIMIT 100');
+          return output(res,200,{items:rows});
+        }
+        if(req.method==='POST'){
+          if(req.headers['x-faxingpro-action']!=='team-manager')
+            return output(res,403,{error:'Team manager action header required'});
+          if(!(req.headers['content-type']||'').startsWith('application/json'))
+            return output(res,415,{error:'Expected JSON'});
+          let payload;try{payload=JSON.parse((await body(req,4096)).toString('utf8'));}
+          catch{return output(res,400,{error:'Invalid user fields'});}
+          const email=normalizeEmail(payload?.email),name=normalizeName(payload?.name),role=payload?.role;
+          if(!email||!name||!roles.includes(role))
+            return output(res,400,{error:'Valid name, email and role are required'});
+          const {rows:count}=await db.query('SELECT count(*)::int AS total FROM team_users WHERE disabled_at IS NULL');
+          if(count[0].total>=25)return output(res,409,{error:'Maximum 25 active named users'});
+          const exists=await db.query('SELECT id FROM team_users WHERE email=$1',[email]);
+          if(exists.rowCount)return output(res,409,{error:'Email is already assigned'});
+          const password=generateTemporaryPassword(),totpSecret=generateTotpSecret();
+          const passwordHash=await hashPassword(password),cipher=encryptTeamTotp(totpSecret,storageKey);
+          const {rows}=await db.query(
+            'INSERT INTO team_users(id,email,display_name,role,password_hash,totp_ciphertext) '+
+            'VALUES($1,$2,$3,$4,$5,$6) RETURNING id,email,display_name AS name,role',
+            [randomUUID(),email,name,role,passwordHash,cipher]);
+          await auditSecurity('team_user_created');
+          return output(res,201,{user:rows[0],credentials:{password,totpSecret},
+            notice:'Copy these credentials securely now. They cannot be retrieved again.'});
+        }
+        return output(res,405,{error:'Method not allowed'},{Allow:'GET, POST'});
+      }
+      const teamMember=p.match(/^\/api\/team\/users\/([0-9a-f-]{36})$/i);
+      if(teamMember){
+        if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
+        if(req.method!=='PATCH')return output(res,405,{error:'Method not allowed'},{Allow:'PATCH'});
+        if(req.headers['x-faxingpro-action']!=='team-manager')
+          return output(res,403,{error:'Team manager action header required'});
+        if(auth.userId===teamMember[1])return output(res,403,{error:'Administrators cannot change their own access'});
+        let payload;try{payload=JSON.parse((await body(req,2048)).toString('utf8'));}
+        catch{return output(res,400,{error:'Invalid update'});}
+        if(!payload||typeof payload!=='object'||Array.isArray(payload)||
+          !['role','disabled'].includes(Object.keys(payload)[0])||
+          Object.keys(payload).length!==1)
+          return output(res,400,{error:'Update one role or disabled field'});
+        let result;
+        if('role' in payload){
+          if(!roles.includes(payload.role))return output(res,400,{error:'Invalid role'});
+          result=await db.query(
+            'UPDATE team_users SET role=$2 WHERE id=$1 RETURNING id,email,display_name AS name,role,disabled_at AS "disabledAt"',
+            [teamMember[1],payload.role]);
+        }else{
+          if(typeof payload.disabled!=='boolean')return output(res,400,{error:'disabled must be boolean'});
+          result=await db.query(
+            'UPDATE team_users SET disabled_at=CASE WHEN $2 THEN now() ELSE NULL END WHERE id=$1 '+
+            'RETURNING id,email,display_name AS name,role,disabled_at AS "disabledAt"',
+            [teamMember[1],payload.disabled]);
+          if(payload.disabled&&result.rowCount)
+            await db.query('DELETE FROM operator_sessions WHERE team_user_id=$1',[teamMember[1]]);
+        }
+        if(!result.rowCount)return output(res,404,{error:'Member not found'});
+        await auditSecurity('team_user_updated');
+        return output(res,200,result.rows[0]);
+      }
       if(p==='/api/tokens'){
         if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
         if(req.method==='GET'){
