@@ -42,7 +42,8 @@
 | Google Drive backup integration | Implemented | rclone uploader, checksum comparison, offsite status and scheduled post-backup hook |
 | Full disaster-recovery rehearsal | Staging procedure available; real drill pending | Staging-only [offsite archive download, verification, isolated DB/file restore](docs/STAGING_RECOVERY_REHEARSAL.md); real Drive archive not yet rehearsed |
 | Named team accounts and roles | First functional milestone | Admin-managed accounts; Viewer, Operator, Administrator server-enforced permissions; mandatory individual password + TOTP, credential rotation and immediate disable; [guide](docs/NAMED_TEAM_ACCOUNTS.md) |
-| Full production identity/retention policy | Future work | Independent account invitation, audit attribution, user self-service, formal retention and compliance not complete |
+| Attributed security and workspace audit | Partial milestone | Logs named or owner actors on key team, token, contact and fax mutations; [coverage/limitations](docs/ATTRIBUTED_AUDIT.md) |
+| Full production identity/retention policy | Future work | Invitations, complete forensic audit, user self-service, formal retention and compliance review not complete |
 
 ## Screens and workflows
 
@@ -347,7 +348,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 
 ## Known limitations
 
-- Named team account role enforcement is available. Formal invitations, individual account self-service, full audit attribution and compliant retention remain incomplete.
+- Named team account role enforcement is available. Formal invitations, individual account self-service, comprehensive tamper-resistant audit and compliant retention remain incomplete.
 - Outbound faxing is constrained to the configured test destination until a dedicated sender-safety rollout is approved.
 - Contact changes are not automatically synchronized with Telnyx or external CRMs.
 - Reporting includes 30-day daily activity but lacks full usage/cost analytics; email/SMS alerts, retention policies and controlled sending retries still need implementation. The read-only reconciliation queue does not resolve provider outcomes or authorize retransmission.
@@ -361,6 +362,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 - [Security and operator sessions](docs/SECURITY_SESSIONS.md)
 - [Opt-in master bearer lockdown](docs/MASTER_BEARER_LOCKDOWN.md)
 - [Named team accounts and role permissions](docs/NAMED_TEAM_ACCOUNTS.md)
+- [Attributed security and workspace audit](docs/ATTRIBUTED_AUDIT.md)
 - [PostgreSQL and encrypted document recovery](docs/BACKUP_RECOVERY.md)
 - [Google Drive setup](docs/GOOGLE_DRIVE_BACKUPS.md)
 - [Developer environment](docs/DEVELOPMENT.md)
