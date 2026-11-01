@@ -25,6 +25,13 @@ const listed=await request('/api/team/users',{headers:master});
 assert.equal(listed.status,200);
 assert.ok((await listed.text()).includes(email));
 const id=data.user.id;
+const createdAudit=await (await request('/api/security',{headers:master})).json();
+const createdEvent=createdAudit.events.find(e=>e.type==='team_user_created'&&e.targetId===id);
+assert.equal(createdEvent?.actorKind,'owner','Owner must be attributed for account creation');
+assert.equal(createdEvent?.actorName,'Owner');
+assert.equal(createdEvent?.targetType,'team_user');
+assert.equal(JSON.stringify(createdAudit).includes(data.credentials.totpSecret),false);
+assert.equal(JSON.stringify(createdAudit).includes(data.credentials.password),false);
 const key=decodeTotpSecret(data.credentials.totpSecret);
 const code=totpAtStep(key,Math.floor(Date.now()/30000));
 const login=await request('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -32,6 +39,11 @@ const login=await request('/api/session',{method:'POST',headers:{'Content-Type':
 assert.equal(login.status,200);
 const session=await login.json();
 assert.equal(session.identity.role,'viewer');
+const loginAudit=await (await request('/api/security',{headers:master})).json();
+const loggedIn=loginAudit.events.find(e=>e.type==='team_login_success'&&e.actorUserId===id);
+assert.equal(loggedIn?.actorKind,'team');
+assert.equal(loggedIn?.actorName,'CI Viewer');
+assert.equal(loggedIn?.actorRole,'viewer');
 const cookie=login.headers.get('set-cookie')?.split(';')[0];
 assert.ok(cookie?.startsWith('__Host-faxingpro_session='));
 const browser={Cookie:cookie};
@@ -47,13 +59,41 @@ const replay=await request('/api/session',{method:'POST',headers:{'Content-Type'
 assert.equal(replay.status,401,'One-time code cannot be used twice');
 const change=(payload)=>request('/api/team/users/'+id,{method:'PATCH',headers:management,body:JSON.stringify(payload)});
 assert.equal((await change({role:'operator'})).status,200);
+const updatedAudit=await (await request('/api/security',{headers:master})).json();
+const roleEvent=updatedAudit.events.find(e=>e.type==='team_role_changed'&&e.targetId===id);
+assert.equal(roleEvent?.actorKind,'owner');
 const changePrefs=await request('/api/notifications/preferences',{method:'PATCH',
   headers:{...browser,'Content-Type':'application/json'},body:JSON.stringify({browserEnabled:false})});
 assert.equal(changePrefs.status,200,'Operator role upgrade must take effect without re-login');
+const contactCreated=await request('/api/contacts',{method:'POST',
+  headers:{...browser,'Content-Type':'application/json'},
+  body:JSON.stringify({name:'CI Audit Contact',number:'+12025550137',
+    email:'',company:'',notes:''})});
+assert.equal(contactCreated.status,201);
+const contactEntry=await contactCreated.json();
+const operatorAudit=await (await request('/api/security',{headers:master})).json();
+const contactEvent=operatorAudit.events.find(e=>e.type==='contact_created'&&e.targetId===contactEntry.id);
+assert.equal(contactEvent?.actorKind,'team');
+assert.equal(contactEvent?.actorUserId,id);
+assert.equal(contactEvent?.actorRole,'operator');
+
 assert.equal((await request('/api/team/users',{headers:browser})).status,403);
 assert.equal((await change({role:'admin'})).status,200);
 assert.equal((await request('/api/team/users',{headers:browser})).status,200,
   'Admin promotion should take effect immediately');
+const namedAdminAudit=await request('/api/security',{headers:browser});
+assert.equal(namedAdminAudit.status,200,'Named administrator can review audit history');
+const createdByAdmin=await request('/api/team/users',{method:'POST',
+  headers:{...browser,'Content-Type':'application/json','X-FaxingPro-Action':'team-manager'},
+  body:JSON.stringify({name:'CI Audit Secondary',email:'audit-secondary@example.invalid',role:'viewer'})});
+assert.equal(createdByAdmin.status,201);
+const secondary=await createdByAdmin.json();
+const afterAdminCreate=await (await request('/api/security',{headers:browser})).json();
+const secondaryEvent=afterAdminCreate.events.find(e=>e.type==='team_user_created'&&e.targetId===secondary.user.id);
+assert.equal(secondaryEvent?.actorKind,'team');
+assert.equal(secondaryEvent?.actorUserId,id);
+assert.equal(secondaryEvent?.actorRole,'admin');
+
 assert.equal((await request('/api/team/users/'+id,{method:'PATCH',
   headers:{...browser,'Content-Type':'application/json','X-FaxingPro-Action':'team-manager'},
   body:JSON.stringify({disabled:true})})).status,403,'Admin cannot disable own account');
@@ -76,6 +116,11 @@ const freshCookie=freshLogin.headers.get('set-cookie')?.split(';')[0];
 assert.ok(freshCookie);
 assert.equal((await request('/api/team/users',{headers:{Cookie:freshCookie}})).status,200);
 assert.equal((await change({disabled:true})).status,200);
+const finalAudit=await (await request('/api/security',{headers:master})).json();
+const disabledEvent=finalAudit.events.find(e=>e.type==='team_user_disabled'&&e.targetId===id);
+assert.equal(disabledEvent?.actorKind,'owner');
+const rotateEvent=finalAudit.events.find(e=>e.type==='team_credentials_rotated'&&e.targetId===id);
+assert.equal(rotateEvent?.actorKind,'owner');
 assert.equal((await request('/api/team/users',{headers:{Cookie:freshCookie}})).status,401,
   'Disabled user loses newly rotated sessions');
 assert.equal((await request('/api/faxes',{headers:browser})).status,401,'Disabled user sessions must be revoked immediately');

@@ -44,7 +44,7 @@ curl -fsS https://fax.mttechservicesllc.com/healthz
 
 Changing the master token invalidates existing browser sessions because session validation checks its fingerprint. **It does not delete or rotate previously generated integration tokens**—revoke those individually if compromise is suspected. Changing `STORAGE_ENCRYPTION_KEY` is a separate, potentially destructive recovery-key migration and must never be used as a routine login-token rotation.
 
-**Current limitations:** Opt-in [TOTP](OPERATOR_TOTP.md) supports browser sign-in. By default, the master `API_TOKEN` bearer remains a single-factor bypass; opt-in [Bearer lockdown](MASTER_BEARER_LOCKDOWN.md) blocks that path and requires TOTP-assured operator sessions. No individual named user accounts, delegated write scopes, automatic secrets rotation, or per-user role assignments. This remains a single-operator pilot. A full production deployment requires layered edge/rate protections, audit retention, tested recovery and a security review.
+**Current limitations:** Opt-in [TOTP](OPERATOR_TOTP.md) supports browser sign-in. By default, the master `API_TOKEN` bearer remains a single-factor bypass; opt-in [Bearer lockdown](MASTER_BEARER_LOCKDOWN.md) blocks that path and requires TOTP-assured operator sessions. Named users and server-enforced Viewer/Operator/Administrator roles are available, but delegated write-scoped integration tokens, account self-service, immutable audit storage, full forensic coverage and automatic secrets rotation are outstanding. A full production deployment requires layered edge/rate protections, audit retention, tested recovery and a security review.
 
 ## Deploy the update
 
@@ -79,3 +79,7 @@ The [safe lockdown and rollback guide](MASTER_BEARER_LOCKDOWN.md) documents `OPE
 ## Named team accounts (first functional milestone)
 
 Administrators can provision individual passwords and mandatory TOTP keys through the Team Members page, set Viewer/Operator/Administrator roles, rotate credentials and disable users. New account secrets are shown only once. The API applies a deny-by-default allowlist for non-admin roles and immediately invalidates disabled users' sessions. The owner API_TOKEN still provides recovery and full access in default legacy mode. Formal invitation delivery, account self-service, complete user attribution and regulated deployment review are future work. See [NAMED_TEAM_ACCOUNTS.md](NAMED_TEAM_ACCOUNTS.md).
+
+## First actor-attributed audit milestone
+
+[ATTRIBUTED_AUDIT.md](ATTRIBUTED_AUDIT.md) describes the additive event ledger fields, named actor display, account/token/contact/fax mutation coverage and privacy limitations. Legacy events cannot be retroactively attributed; historical records stay as system/unknown. Do not describe this as complete regulatory audit compliance.

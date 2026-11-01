@@ -40,8 +40,17 @@ const tokenFingerprint=createHash('sha256').update(secret).digest('hex');
 // Reverse proxy topology does not currently provide a trustworthy end-client IP.
 // Correct API tokens remain usable even while invalid attempts are throttled.
 const maxFailedLogins=8;
-const auditSecurity=async event=>
-  db.query('INSERT INTO operator_security_events(event_type) VALUES($1)',[event]);
+// Audit actor IDs and object IDs only; never write credentials, request bodies,
+// fax numbers, document contents or auth headers into the event ledger.
+const auditSecurity=async(event,actor=null,targetType=null,targetId=null)=>{
+  const actorKind=actor?.userId?'team':actor?.kind==='operator'?'owner':actor?.kind==='integration'?'integration':'system';
+  const actorId=actor?.userId||null;
+  const actorRole=actor?.role||(actorKind==='owner'?'admin':null);
+  return db.query(
+    'INSERT INTO operator_security_events(event_type,actor_kind,actor_user_id,actor_role,target_type,target_id) '+
+    'VALUES($1,$2,$3,$4,$5,$6)',
+    [event,actorKind,actorId,actorRole,targetType,targetId]);
+};
 const failedLogin=async()=>{
   const {rows}=await db.query(
     "INSERT INTO operator_login_failures(id,failed_count,window_start) VALUES(1,1,now()) "+
@@ -124,8 +133,10 @@ const operatorSession=async(req,res)=>{
   if(req.method==='DELETE'){
     const raw=sessionCookie(req);
     if(raw){
+      const active=await currentSession(req);
       const result=await db.query('DELETE FROM operator_sessions WHERE token_hash=$1',[sessionHash(raw)]);
-      if(result.rowCount)await auditSecurity('logout');
+      if(result.rowCount)await auditSecurity('logout',
+        active?.team_user_id?{userId:active.team_user_id,role:active.role}:active?{kind:'operator'}:null);
     }
     return output(res,200,{authenticated:false,mfaRequired:!!totpKey,masterBearerEnabled:allowMasterBearer},{'Set-Cookie':cookieClear});
   }
@@ -168,7 +179,7 @@ const operatorSession=async(req,res)=>{
     await db.query(
       'INSERT INTO operator_sessions(token_hash,token_fingerprint,expires_at,assurance_fingerprint,team_user_id) VALUES($1,$2,$3,$4,$5)',
       [sessionHash(raw),tokenFingerprint,expires,null,user.id]);
-    await auditSecurity('team_login_success');
+    await auditSecurity('team_login_success',{userId:user.id,role:user.role},'team_user',user.id);
     return output(res,200,{authenticated:true,expiresAt:expires.toISOString(),mfaRequired:true,
       masterBearerEnabled:allowMasterBearer,
       identity:{id:user.id,email:user.email,name:user.display_name,role:user.role}},
@@ -203,7 +214,7 @@ const operatorSession=async(req,res)=>{
   const expires=new Date(Date.now()+7*24*60*60*1000);
   await db.query('INSERT INTO operator_sessions(token_hash,token_fingerprint,expires_at,assurance_fingerprint) VALUES($1,$2,$3,$4)',
     [sessionHash(raw),tokenFingerprint,expires,totpFingerprint]);
-  await auditSecurity('login_success');
+  await auditSecurity('login_success',{kind:'operator'});
   const cookie=cookieName+'='+raw+'; '+cookieBase+'; Max-Age=604800';
   return output(res,200,{authenticated:true,expiresAt:expires.toISOString(),mfaRequired:!!totpKey,masterBearerEnabled:allowMasterBearer},{'Set-Cookie':cookie});
 };
@@ -276,6 +287,13 @@ const setup=async()=>{
   await db.query("CREATE TABLE IF NOT EXISTS operator_security_events ("+
     "id BIGSERIAL PRIMARY KEY,event_type TEXT NOT NULL,"+
     "created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await db.query("ALTER TABLE operator_security_events ADD COLUMN IF NOT EXISTS actor_kind TEXT NOT NULL DEFAULT 'system'");
+  await db.query("ALTER TABLE operator_security_events ADD COLUMN IF NOT EXISTS actor_user_id UUID");
+  await db.query("ALTER TABLE operator_security_events ADD COLUMN IF NOT EXISTS actor_role TEXT");
+  await db.query("ALTER TABLE operator_security_events ADD COLUMN IF NOT EXISTS target_type TEXT");
+  await db.query("ALTER TABLE operator_security_events ADD COLUMN IF NOT EXISTS target_id TEXT");
+  await db.query("CREATE INDEX IF NOT EXISTS operator_security_events_actor_idx "+
+    "ON operator_security_events(actor_user_id,created_at DESC)");
   await db.query("CREATE INDEX IF NOT EXISTS operator_security_events_recent_idx "+
     "ON operator_security_events(created_at DESC)");
   await db.query("CREATE TABLE IF NOT EXISTS app_settings ("+
@@ -338,7 +356,7 @@ const telnyx=async(record,link)=>{
     return (await r.json()).data||{};
   }finally{clearTimeout(timeout);}
 };
-const postFax=async(req,res)=>{
+const postFax=async(req,res,actor)=>{
   if(!sending)return output(res,503,{error:'Outbound fax is locked until SEND_ENABLED=true and the first test is approved'});
   let v;try{v=JSON.parse((await body(req,14*1024*1024+2048)).toString());}
   catch{return output(res,400,{error:'Invalid or oversized JSON body'});}
@@ -357,6 +375,7 @@ const postFax=async(req,res)=>{
   try{await db.query("INSERT INTO faxes(id,client_key,direction,status,from_number,to_number,title,filename,file_name)"+
     " VALUES($1,$2,'outbound','submitting',$3,$4,$5,$6,$7)",[id,reqId,did,v.recipient,title,filename,file]);}
   catch(err){await unlink(path.join(dir,file)).catch(()=>{});throw err;}
+  await auditSecurity('fax_submission_created',actor,'fax',id);
   const expires=Math.floor(Date.now()/1000)+3600;
   const link=base+'/media/outbound/'+id+'?exp='+expires+'&sig='+signMedia(mediaSecret,id,expires);
   try{
@@ -510,7 +529,7 @@ const app=http.createServer(async(req,res)=>{
             'INSERT INTO team_users(id,email,display_name,role,password_hash,totp_ciphertext) '+
             'VALUES($1,$2,$3,$4,$5,$6) RETURNING id,email,display_name AS name,role',
             [randomUUID(),email,name,role,passwordHash,cipher]);
-          await auditSecurity('team_user_created');
+          await auditSecurity('team_user_created',auth,'team_user',rows[0].id);
           return output(res,201,{user:rows[0],credentials:{password,totpSecret},
             notice:'Copy these credentials securely now. They cannot be retrieved again.'});
         }
@@ -545,7 +564,8 @@ const app=http.createServer(async(req,res)=>{
             await db.query('DELETE FROM operator_sessions WHERE team_user_id=$1',[teamMember[1]]);
         }
         if(!result.rowCount)return output(res,404,{error:'Member not found'});
-        await auditSecurity('team_user_updated');
+        await auditSecurity('role' in payload?'team_role_changed':
+          payload.disabled?'team_user_disabled':'team_user_enabled',auth,'team_user',teamMember[1]);
         return output(res,200,result.rows[0]);
       }
       const resetMember=p.match(/^\/api\/team\/users\/([0-9a-f-]{36})\/reset$/i);
@@ -563,7 +583,7 @@ const app=http.createServer(async(req,res)=>{
           [resetMember[1],passwordHash,encryptTeamTotp(totpSecret,storageKey)]);
         if(!rows.length)return output(res,404,{error:'Account not found'});
         await db.query('DELETE FROM operator_sessions WHERE team_user_id=$1',[resetMember[1]]);
-        await auditSecurity('team_credentials_rotated');
+        await auditSecurity('team_credentials_rotated',auth,'team_user',resetMember[1]);
         return output(res,200,{email:rows[0].email,credentials:{password,totpSecret},
           notice:'All sessions revoked. Save the replacement credentials securely now.'});
       }
@@ -598,7 +618,7 @@ const app=http.createServer(async(req,res)=>{
             "INSERT INTO api_tokens(id,name,token_hash,prefix,scopes,expires_at) "+
             "VALUES($1,$2,$3,$4,$5,now()+($6*interval '1 day')) RETURNING *",
             [randomUUID(),name,hash,raw.slice(0,12),scopes,days]);
-          await auditSecurity('api_token_created');
+          await auditSecurity('api_token_created',auth,'api_token',rows[0].id);
           // Return the raw secret ONE TIME. The database only stores its SHA-256 hash.
           return output(res,201,{...tokenPublic(rows[0]),token:raw});
         }
@@ -615,7 +635,7 @@ const app=http.createServer(async(req,res)=>{
           "UPDATE api_tokens SET revoked_at=now() WHERE id=$1 AND revoked_at IS NULL "+
           "RETURNING id",[tokenDelete[1]]);
         if(!rows.length)return output(res,404,{error:'Token not found or already revoked'});
-        await auditSecurity('api_token_revoked');
+        await auditSecurity('api_token_revoked',auth,'api_token',tokenDelete[1]);
         return output(res,200,{revoked:true});
       }
       if(auth.kind==='integration'&&!integrationScope(req.method,p))
@@ -626,7 +646,14 @@ const app=http.createServer(async(req,res)=>{
           db.query('SELECT count(*)::int AS count FROM operator_sessions WHERE expires_at>now() '+
             'AND token_fingerprint=$1 AND ($2::text IS NULL OR assurance_fingerprint=$2)',
             [tokenFingerprint,allowMasterBearer?null:totpFingerprint]),
-          db.query('SELECT event_type AS type,created_at AS "createdAt" FROM operator_security_events ORDER BY created_at DESC LIMIT 20'),
+          db.query(
+            'SELECT e.event_type AS type,e.created_at AS "createdAt",'+
+            'e.actor_kind AS "actorKind",e.actor_user_id AS "actorUserId",'+
+            'e.actor_role AS "actorRole",e.target_type AS "targetType",e.target_id AS "targetId",'+
+            'CASE WHEN e.actor_kind=\'team\' THEN COALESCE(u.display_name,\'Former team member\') '+
+            'WHEN e.actor_kind=\'owner\' THEN \'Owner\' ELSE \'System / unknown\' END AS "actorName" '+
+            'FROM operator_security_events e LEFT JOIN team_users u ON u.id=e.actor_user_id '+
+            'ORDER BY e.created_at DESC,e.id DESC LIMIT 50'),
           db.query("SELECT count(*)::int AS count FROM operator_security_events WHERE event_type='login_failure' "+
             "AND created_at>now()-interval '24 hours'")
         ]);
@@ -641,7 +668,7 @@ const app=http.createServer(async(req,res)=>{
       }
       if(req.method==='DELETE'&&p==='/api/sessions'){
         const result=await db.query('DELETE FROM operator_sessions');
-        await auditSecurity('all_sessions_revoked');
+        await auditSecurity('all_sessions_revoked',auth);
         return output(res,200,{revoked:result.rowCount},{'Set-Cookie':cookieClear});
       }
       if(req.method==='GET'&&p==='/api/backup/status'){
@@ -750,6 +777,7 @@ const app=http.createServer(async(req,res)=>{
           const {rows}=await db.query(
             'INSERT INTO contacts(id,name,number,email,company,notes) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
             [randomUUID(),info.name,info.number,info.email,info.company,info.notes]);
+          await auditSecurity('contact_created',auth,'contact',rows[0].id);
           return output(res,201,contactRow(rows[0]));
         }
         return output(res,405,{error:'Method not allowed'},{Allow:'GET, POST'});
@@ -759,6 +787,7 @@ const app=http.createServer(async(req,res)=>{
         if(!uuid.test(contact[1]))return output(res,400,{error:'Invalid contact ID'});
         if(req.method==='DELETE'){
           const result=await db.query('DELETE FROM contacts WHERE id=$1',[contact[1]]);
+          if(result.rowCount)await auditSecurity('contact_deleted',auth,'contact',contact[1]);
           return output(res,result.rowCount?200:404,result.rowCount?{deleted:true}:{error:'Contact not found'});
         }
         if(req.method==='PATCH'){
@@ -771,6 +800,7 @@ const app=http.createServer(async(req,res)=>{
           const {rows}=await db.query(
             "UPDATE contacts SET name=$2,number=$3,email=$4,company=$5,notes=$6,updated_at=now() WHERE id=$1 RETURNING *",
             [contact[1],info.name,info.number,info.email,info.company,info.notes]);
+          if(rows.length)await auditSecurity('contact_updated',auth,'contact',contact[1]);
           return output(res,rows.length?200:404,rows.length?contactRow(rows[0]):{error:'Contact not found'});
         }
         return output(res,405,{error:'Method not allowed'},{Allow:'PATCH, DELETE'});
@@ -867,11 +897,13 @@ const app=http.createServer(async(req,res)=>{
           const {rows}=await db.query(
             "UPDATE faxes SET read_at=CASE WHEN $2 THEN now() ELSE NULL END,updated_at=now() "+
             "WHERE id=$1 AND direction='inbound' RETURNING *",[id,v.enabled]);
+          if(rows.length)await auditSecurity(v.enabled?'fax_marked_read':'fax_marked_unread',auth,'fax',id);
           return output(res,rows.length?200:404,rows.length?row(rows[0]):{error:'Incoming fax not found'});
         }
         const {rows}=await db.query(
           "UPDATE faxes SET archived_at=CASE WHEN $2 THEN now() ELSE NULL END,updated_at=now() "+
           "WHERE id=$1 RETURNING *",[id,v.enabled]);
+        if(rows.length)await auditSecurity(v.enabled?'fax_archived':'fax_unarchived',auth,'fax',id);
         return output(res,rows.length?200:404,rows.length?row(rows[0]):{error:'Fax not found'});
       }
       if(req.method==='GET'&&p==='/api/stats'){
@@ -907,7 +939,7 @@ const app=http.createServer(async(req,res)=>{
         return output(res,200,{events:rows,createdAt:fax.created_at,
           direction:fax.direction,status:fax.status});
       }
-      if(req.method==='POST'&&p==='/api/faxes')return await postFax(req,res);
+      if(req.method==='POST'&&p==='/api/faxes')return await postFax(req,res,auth);
       const doc=p.match(/^\/api\/faxes\/([0-9a-f-]{36})\/document$/i);
       if(req.method==='GET'&&doc){
         const {rows}=await db.query('SELECT file_name,filename FROM faxes WHERE id=$1',[doc[1]]);

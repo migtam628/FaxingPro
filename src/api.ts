@@ -115,7 +115,9 @@ export function revokeIntegrationToken(endpoint:string,id:string):Promise<{revok
 
 export type SecurityStatus = {
   activeSessions:number;failedLogins24h:number;
-  events:{type:string;createdAt:string}[];
+  events:{type:string;createdAt:string;actorKind:'owner'|'team'|'system'|'integration';
+    actorUserId:string|null;actorRole:string|null;actorName:string;
+    targetType:string|null;targetId:string|null}[];
   mode:'single-operator';mfaEnabled:boolean;masterBearerEnabled:boolean;
   mfaScope:'disabled'|'browser-session-only'|'operator-session-required';
 };
