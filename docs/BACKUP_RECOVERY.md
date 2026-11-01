@@ -141,3 +141,7 @@ The [Telnyx backend CI workflow](../.github/workflows/telnyx-ci.yml) now execute
 
 **Still required for actual disaster recovery:** Transfer a recent encrypted backup from Google Drive to a separate trusted, access-controlled staging machine. Use the *offline* age identity to validate all three archives; restore them to a separately provisioned isolated database and document volume using an operator-reviewed procedure, with outgoing transmissions disabled and Telnyx credentials never activated. Validate application data and PDFs, record RPO/RTO and failure handling, then destroy only the deliberate staging resources. Never upload a private age identity, live environment file or decrypted backup into GitHub Actions.
 
+
+## v0.8 — Separate, staging-only offsite archive rehearsal
+
+Use [STAGING_RECOVERY_REHEARSAL.md](STAGING_RECOVERY_REHEARSAL.md) and `scripts/faxingpro-staging-recovery.sh` on **a different trusted Linux machine only**. This separate procedure downloads a specific encrypted Google Drive archive, verifies its manifest and age streams, and then exercises PostgreSQL and stored-PDF restoration using isolated, temporary Docker resources with no external network. It refuses recognizable production VPS backup setup and permanent FaxingPro volumes. Unlike the synthetic CI runner, production archives and recovery identities must never be supplied to CI. The actual Drive archive restore is pending operator staging validation; a passing synthetic test is not sufficient to claim full DR.
