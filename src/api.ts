@@ -78,6 +78,12 @@ export function updateTeamMember(endpoint:string,id:string,change:{role:TeamMemb
     method:'PATCH',headers:{'Content-Type':'application/json','X-FaxingPro-Action':'team-manager'},
     body:JSON.stringify(change)});
 }
+export function rotateTeamCredentials(endpoint:string,id:string):Promise<{
+  email:string;credentials:{password:string;totpSecret:string};notice:string
+}>{
+  return apiCall(endpoint,'','/api/team/users/'+encodeURIComponent(id)+'/reset',{
+    method:'POST',headers:{'X-FaxingPro-Action':'team-manager'}});
+}
 export function createTeamSession(endpoint:string,email:string,password:string,otp:string):Promise<OperatorSession>{
   return apiCall<OperatorSession>(endpoint,'','/api/session',{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,otp})});
