@@ -5,6 +5,8 @@ import path from 'node:path';
 import pg from 'pg';
 import {decodeTotpSecret,matchTotp,fingerprintTotp} from './operator-totp.mjs';
 import {parseMasterBearerMode,masterBearerAllowed} from './operator-auth-policy.mjs';
+import {normalizeEmail,normalizeName,roles,hashPassword,verifyPassword,generateTemporaryPassword,encryptTeamTotp,decryptTeamTotp,teamRoleAllows} from './team-auth.mjs';
+import {generateTotpSecret} from './operator-totp.mjs';
 import {e164US,pdfValid,cleanName,statusFor,webhookKey,verifyWebhook,
   signMedia,mediaAuthorized,safeIncomingUrl,encryptPdf,decryptPdf} from './telnyx-utils.mjs';
 
@@ -65,8 +67,11 @@ const currentSession=async req=>{
   const raw=sessionCookie(req);
   if(!raw)return null;
   const {rows}=await db.query(
-    'SELECT expires_at FROM operator_sessions WHERE token_hash=$1 AND token_fingerprint=$2 '+
-    'AND expires_at>now() AND ($3::text IS NULL OR assurance_fingerprint=$3)',
+    "SELECT s.expires_at,s.team_user_id,u.role,u.email,u.display_name "+
+    "FROM operator_sessions s LEFT JOIN team_users u ON u.id=s.team_user_id "+
+    "WHERE s.token_hash=$1 AND s.token_fingerprint=$2 AND s.expires_at>now() "+
+    "AND ((s.team_user_id IS NULL AND ($3::text IS NULL OR s.assurance_fingerprint=$3)) "+
+    "OR (s.team_user_id IS NOT NULL AND u.id IS NOT NULL AND u.disabled_at IS NULL))",
     [sessionHash(raw),tokenFingerprint,allowMasterBearer?null:totpFingerprint]);
   return rows[0]||null;
 };
@@ -85,7 +90,16 @@ const authContext=async(req,p)=>{
   if(tokenMatches(bearer))return allowMasterBearer?{kind:'operator'}:{kind:'blocked-master'};
   // When an Authorization header is supplied, never silently escalate its
   // permissions using an unrelated browser cookie.
-  if(!req.headers.authorization && await currentSession(req))return {kind:'operator'};
+  if(!req.headers.authorization){
+    const session=await currentSession(req);
+    if(session){
+      if(session.team_user_id)return {
+        kind:session.role==='admin'?'operator':'team',
+        role:session.role,userId:session.team_user_id
+      };
+      return {kind:'operator',role:'admin'};
+    }
+  }
   if(!/^fpx_[A-Za-z0-9_-]{43}$/.test(bearer))return null;
   const required=integrationScope(req.method,p);
   if(!required)return {kind:'restricted'};
@@ -102,7 +116,10 @@ const tokenPublic=r=>({
 const operatorSession=async(req,res)=>{
   if(req.method==='GET'){
     const active=await currentSession(req);
-    return output(res,200,{authenticated:!!active,expiresAt:active?.expires_at||null,mfaRequired:!!totpKey,masterBearerEnabled:allowMasterBearer});
+    return output(res,200,{authenticated:!!active,expiresAt:active?.expires_at||null,mfaRequired:!!totpKey,
+      masterBearerEnabled:allowMasterBearer,
+      identity:active?.team_user_id?{id:active.team_user_id,email:active.email,
+        name:active.display_name,role:active.role}:active?{id:null,email:null,name:'Owner',role:'admin'}:null});
   }
   if(req.method==='DELETE'){
     const raw=sessionCookie(req);
@@ -118,6 +135,45 @@ const operatorSession=async(req,res)=>{
   let payload;
   try{payload=JSON.parse((await body(req,4096)).toString('utf8'));}
   catch{return output(res,400,{error:'Invalid request'});}
+  // Named-user sign-in is intentionally separate from the legacy owner API_TOKEN.
+  // Both a strong per-user secret and a non-replayable TOTP are always required.
+  if(Object.hasOwn(payload||{},'email')){
+    const email=normalizeEmail(payload.email);
+    const {rows}=email?await db.query(
+      'SELECT id,email,display_name,role,password_hash,totp_ciphertext,last_totp_step FROM team_users WHERE email=$1 AND disabled_at IS NULL',
+      [email]):{rows:[]};
+    const user=rows[0];
+    const validPassword=user?await verifyPassword(payload.password,user.password_hash):false;
+    let step=null;
+    if(validPassword){
+      try{step=matchTotp(decodeTotpSecret(decryptTeamTotp(user.totp_ciphertext,storageKey)),payload.otp);}
+      catch{step=null;}
+    }
+    if(!user||!validPassword||step===null){
+      const count=await failedLogin();
+      if(count<=maxFailedLogins)await auditSecurity('team_login_failure');
+      return output(res,count>=maxFailedLogins?429:401,
+        {error:count>=maxFailedLogins?'Too many invalid sign-in attempts.':'Invalid email, password or authenticator code.'});
+    }
+    const used=await db.query(
+      'UPDATE team_users SET last_totp_step=$2 WHERE id=$1 AND disabled_at IS NULL AND last_totp_step<$2 RETURNING id',
+      [user.id,step]);
+    if(!used.rowCount){
+      await auditSecurity('team_totp_replay_rejected');
+      return output(res,401,{error:'One-time code already used. Wait for the next code.'});
+    }
+    await db.query('DELETE FROM operator_login_failures WHERE id=1');
+    const raw=randomBytes(32).toString('base64url');
+    const expires=new Date(Date.now()+7*24*60*60*1000);
+    await db.query(
+      'INSERT INTO operator_sessions(token_hash,token_fingerprint,expires_at,assurance_fingerprint,team_user_id) VALUES($1,$2,$3,$4,$5)',
+      [sessionHash(raw),tokenFingerprint,expires,null,user.id]);
+    await auditSecurity('team_login_success');
+    return output(res,200,{authenticated:true,expiresAt:expires.toISOString(),mfaRequired:true,
+      masterBearerEnabled:allowMasterBearer,
+      identity:{id:user.id,email:user.email,name:user.display_name,role:user.role}},
+      {'Set-Cookie':cookieName+'='+raw+'; '+cookieBase+'; Max-Age=604800'});
+  }
   const primaryValid=tokenMatches(payload?.token);
   const acceptedStep=primaryValid&&totpKey?matchTotp(totpKey,payload?.otp):null;
   if(!primaryValid || (totpKey&&acceptedStep===null)){
@@ -201,6 +257,14 @@ const setup=async()=>{
   await db.query("CREATE TABLE IF NOT EXISTS operator_totp_use ("+
     "id INTEGER PRIMARY KEY CHECK(id=1),secret_fingerprint TEXT NOT NULL,last_step BIGINT NOT NULL)");
   await db.query("ALTER TABLE operator_sessions ADD COLUMN IF NOT EXISTS assurance_fingerprint TEXT");
+  await db.query("CREATE TABLE IF NOT EXISTS team_users ("+
+    "id UUID PRIMARY KEY,email TEXT NOT NULL UNIQUE,display_name TEXT NOT NULL,"+
+    "role TEXT NOT NULL CHECK(role IN ('admin','operator','viewer')),"+
+    "password_hash TEXT NOT NULL,totp_ciphertext TEXT NOT NULL,"+
+    "last_totp_step BIGINT NOT NULL DEFAULT -1,"+
+    "disabled_at TIMESTAMPTZ,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await db.query("ALTER TABLE operator_sessions ADD COLUMN IF NOT EXISTS team_user_id UUID REFERENCES team_users(id)");
+  await db.query("CREATE INDEX IF NOT EXISTS operator_sessions_team_idx ON operator_sessions(team_user_id)");
   await db.query("CREATE TABLE IF NOT EXISTS api_tokens ("+
     "id UUID PRIMARY KEY,name TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,"+
     "prefix TEXT NOT NULL,scopes TEXT[] NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),"+
@@ -411,6 +475,98 @@ const app=http.createServer(async(req,res)=>{
       if(auth.kind==='blocked-master')
         return output(res,403,{error:'Master bearer authorization is disabled. Sign in with an authenticator code to obtain a browser session.'});
       if(auth.kind==='restricted')return output(res,403,{error:'Integration token is expired, revoked or lacks permission for this endpoint'});
+      if(auth.kind==='team'&&!teamRoleAllows(auth.role,req.method,p))
+        return output(res,403,{error:'Your workspace role does not permit this action'});
+      if(p==='/api/team/me'&&req.method==='GET'){
+        return output(res,200,{identity:auth.userId?(
+          await db.query('SELECT id,email,display_name AS name,role FROM team_users WHERE id=$1',[auth.userId])
+        ).rows[0]||null:{id:null,email:null,name:'Owner',role:'admin'}});
+      }
+      if(p==='/api/team/users'){
+        if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
+        if(req.method==='GET'){
+          const {rows}=await db.query(
+            'SELECT id,email,display_name AS name,role,disabled_at AS "disabledAt",created_at AS "createdAt" '+
+            'FROM team_users ORDER BY created_at DESC LIMIT 100');
+          return output(res,200,{items:rows});
+        }
+        if(req.method==='POST'){
+          if(req.headers['x-faxingpro-action']!=='team-manager')
+            return output(res,403,{error:'Team manager action header required'});
+          if(!(req.headers['content-type']||'').startsWith('application/json'))
+            return output(res,415,{error:'Expected JSON'});
+          let payload;try{payload=JSON.parse((await body(req,4096)).toString('utf8'));}
+          catch{return output(res,400,{error:'Invalid user fields'});}
+          const email=normalizeEmail(payload?.email),name=normalizeName(payload?.name),role=payload?.role;
+          if(!email||!name||!roles.includes(role))
+            return output(res,400,{error:'Valid name, email and role are required'});
+          const {rows:count}=await db.query('SELECT count(*)::int AS total FROM team_users WHERE disabled_at IS NULL');
+          if(count[0].total>=25)return output(res,409,{error:'Maximum 25 active named users'});
+          const exists=await db.query('SELECT id FROM team_users WHERE email=$1',[email]);
+          if(exists.rowCount)return output(res,409,{error:'Email is already assigned'});
+          const password=generateTemporaryPassword(),totpSecret=generateTotpSecret();
+          const passwordHash=await hashPassword(password),cipher=encryptTeamTotp(totpSecret,storageKey);
+          const {rows}=await db.query(
+            'INSERT INTO team_users(id,email,display_name,role,password_hash,totp_ciphertext) '+
+            'VALUES($1,$2,$3,$4,$5,$6) RETURNING id,email,display_name AS name,role',
+            [randomUUID(),email,name,role,passwordHash,cipher]);
+          await auditSecurity('team_user_created');
+          return output(res,201,{user:rows[0],credentials:{password,totpSecret},
+            notice:'Copy these credentials securely now. They cannot be retrieved again.'});
+        }
+        return output(res,405,{error:'Method not allowed'},{Allow:'GET, POST'});
+      }
+      const teamMember=p.match(/^\/api\/team\/users\/([0-9a-f-]{36})$/i);
+      if(teamMember){
+        if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
+        if(req.method!=='PATCH')return output(res,405,{error:'Method not allowed'},{Allow:'PATCH'});
+        if(req.headers['x-faxingpro-action']!=='team-manager')
+          return output(res,403,{error:'Team manager action header required'});
+        if(auth.userId===teamMember[1])return output(res,403,{error:'Administrators cannot change their own access'});
+        let payload;try{payload=JSON.parse((await body(req,2048)).toString('utf8'));}
+        catch{return output(res,400,{error:'Invalid update'});}
+        if(!payload||typeof payload!=='object'||Array.isArray(payload)||
+          !['role','disabled'].includes(Object.keys(payload)[0])||
+          Object.keys(payload).length!==1)
+          return output(res,400,{error:'Update one role or disabled field'});
+        let result;
+        if('role' in payload){
+          if(!roles.includes(payload.role))return output(res,400,{error:'Invalid role'});
+          result=await db.query(
+            'UPDATE team_users SET role=$2 WHERE id=$1 RETURNING id,email,display_name AS name,role,disabled_at AS "disabledAt"',
+            [teamMember[1],payload.role]);
+        }else{
+          if(typeof payload.disabled!=='boolean')return output(res,400,{error:'disabled must be boolean'});
+          result=await db.query(
+            'UPDATE team_users SET disabled_at=CASE WHEN $2 THEN now() ELSE NULL END WHERE id=$1 '+
+            'RETURNING id,email,display_name AS name,role,disabled_at AS "disabledAt"',
+            [teamMember[1],payload.disabled]);
+          if(payload.disabled&&result.rowCount)
+            await db.query('DELETE FROM operator_sessions WHERE team_user_id=$1',[teamMember[1]]);
+        }
+        if(!result.rowCount)return output(res,404,{error:'Member not found'});
+        await auditSecurity('team_user_updated');
+        return output(res,200,result.rows[0]);
+      }
+      const resetMember=p.match(/^\/api\/team\/users\/([0-9a-f-]{36})\/reset$/i);
+      if(resetMember){
+        if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
+        if(req.method!=='POST')return output(res,405,{error:'Method not allowed'},{Allow:'POST'});
+        if(req.headers['x-faxingpro-action']!=='team-manager')
+          return output(res,403,{error:'Team manager action header required'});
+        if(auth.userId===resetMember[1])return output(res,403,{error:'Use owner recovery for your own account'});
+        const password=generateTemporaryPassword(),totpSecret=generateTotpSecret();
+        const passwordHash=await hashPassword(password);
+        const {rows}=await db.query(
+          'UPDATE team_users SET password_hash=$2,totp_ciphertext=$3,last_totp_step=-1 '+
+          'WHERE id=$1 RETURNING id,email',
+          [resetMember[1],passwordHash,encryptTeamTotp(totpSecret,storageKey)]);
+        if(!rows.length)return output(res,404,{error:'Account not found'});
+        await db.query('DELETE FROM operator_sessions WHERE team_user_id=$1',[resetMember[1]]);
+        await auditSecurity('team_credentials_rotated');
+        return output(res,200,{email:rows[0].email,credentials:{password,totpSecret},
+          notice:'All sessions revoked. Save the replacement credentials securely now.'});
+      }
       if(p==='/api/tokens'){
         if(auth.kind!=='operator')return output(res,403,{error:'Administrator session required'});
         if(req.method==='GET'){

@@ -8,6 +8,9 @@ type Props = {
   mode:'checking'|'signin'|'setup';
   endpoint:string; token:string; setToken:(value:string)=>void;
   mfaRequired:boolean;otp:string;setOtp:(value:string)=>void;
+  signInKind:'owner'|'team';setSignInKind:(value:'owner'|'team')=>void;
+  teamEmail:string;setTeamEmail:(value:string)=>void;
+  teamPassword:string;setTeamPassword:(value:string)=>void;
   setup:SetupState|null;
   working:boolean; error:string;
   onConnect:()=>Promise<void>;onReload:()=>Promise<void>;onRetry:()=>void;
@@ -22,7 +25,8 @@ const timezones=[
   ['UTC','UTC']
 ] as const;
 const steps=['Connect','Check gateway','Workspace'];
-export default function SetupWizard({mode,endpoint,token,setToken,mfaRequired,otp,setOtp,setup,working,error,
+export default function SetupWizard({mode,endpoint,token,setToken,mfaRequired,otp,setOtp,
+  signInKind,setSignInKind,teamEmail,setTeamEmail,teamPassword,setTeamPassword,setup,working,error,
   onConnect,onReload,onRetry,onFinish}:Props){
   const [step,setStep]=useState(0);
   const [workspaceName,setWorkspaceName]=useState<string|null>(null);
@@ -68,19 +72,33 @@ export default function SetupWizard({mode,endpoint,token,setToken,mfaRequired,ot
           <h2>Connect your FaxingPro server</h2>
           <p>Enter the operator token from your VPS once. We exchange it for a secure HttpOnly cookie and never save the token in browser storage.</p>
           {supportsServer?<form onSubmit={e=>{e.preventDefault();void onConnect();}} className="setup-form">
+            <label>Sign-in method<select value={signInKind}
+              onChange={e=>setSignInKind(e.target.value as 'owner'|'team')}>
+              <option value="owner">Owner / API token</option>
+              <option value="team">Named team account</option>
+            </select></label>
             <label>Server address<input type="url" readOnly value={endpoint}/></label>
-            <label>Operator API token<input type="password" autoComplete="off" value={token}
-              onChange={e=>setToken(e.target.value)} placeholder="Paste API_TOKEN from deployment/telnyx/.env" required/></label>
-            {mfaRequired&&<label>Authenticator one-time code
+            {signInKind==='owner'
+              ?<label>Owner API token<input type="password" autoComplete="off" value={token}
+                onChange={e=>setToken(e.target.value)} placeholder="Paste API_TOKEN from your VPS" required/></label>
+              :<>
+                <label>Email<input type="email" value={teamEmail} onChange={e=>setTeamEmail(e.target.value)}
+                  autoComplete="username" required/></label>
+                <label>Account password<input type="password" value={teamPassword}
+                  onChange={e=>setTeamPassword(e.target.value)} autoComplete="current-password" required/></label>
+              </>}
+            {(mfaRequired||signInKind==='team')&&<label>Authenticator one-time code
               <input type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
                 autoComplete="one-time-code" value={otp} required
                 onChange={e=>setOtp(e.target.value.replace(/[^0-9]/g,'').slice(0,6))}
                 placeholder="6-digit authenticator code"/>
             </label>}
-            <button className="btn primary setup-cta" disabled={working||!token.trim()||(mfaRequired&&!/^[0-9]{6}$/.test(otp))} type="submit">
+            <button className="btn primary setup-cta" disabled={working||(signInKind==='owner'&&!token.trim())||
+                (signInKind==='team'&&(!teamEmail.trim()||!teamPassword))||
+                ((mfaRequired||signInKind==='team')&&!/^[0-9]{6}$/.test(otp))} type="submit">
               {working?'Connecting…':'Connect securely'} <ArrowRight size={17}/></button>
           </form>:<div className="setup-warning"><AlertTriangle size={19}/><span>This static client has no backend on its current origin. Open your self-hosted FaxingPro HTTPS website to complete setup. The GitHub Pages site never accepts operator credentials.</span></div>}
-          <p className="setup-hint">The operator token is <code>API_TOKEN</code>, not your Telnyx API key. If configured on the VPS, browser sign-in also requires an authenticator code; direct Bearer API_TOKEN access remains single-factor.</p>
+          <p className="setup-hint">Owners sign in with the VPS API_TOKEN and TOTP if enabled. Named team members always use an email, individual password and authenticator code. Never share these credentials in chat.</p>
           {error&&<button className="btn secondary" type="button" onClick={onRetry} disabled={working}>
             <RefreshCw size={16}/> Retry server check</button>}
         </div>}

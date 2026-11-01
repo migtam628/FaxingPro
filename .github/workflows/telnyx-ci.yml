@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'server/telnyx*'
+      - 'server/team-auth.mjs'
+      - 'tests/team-auth.test.mjs'
+      - 'src/TeamMembers.tsx'
       - 'scripts/faxingpro-*.sh'
       - 'scripts/install-vps.sh'
       - 'scripts/install-faxingpro-*.sh'
@@ -69,6 +72,7 @@ jobs:
           node --check server/telnyx-utils.mjs
           node --check server/operator-totp.mjs
           node --check server/operator-auth-policy.mjs
+          node --check server/team-auth.mjs
       - name: Run API and webhook security tests
         run: npm test
       - name: Prepare ephemeral signed-webhook fixture and Compose secrets
@@ -94,6 +98,8 @@ jobs:
         run: docker compose -f deployment/telnyx/compose.yaml --env-file deployment/telnyx/.env up -d --build
       - name: Verify signed webhooks, auth, and persistent fax rows
         run: node tests/telnyx-smoke.mjs
+      - name: Test named users, TOTP enrollment, roles and credential rotation with fake accounts
+        run: node tests/telnyx-team-smoke.mjs
       - name: Verify opt-in browser TOTP after synthetic session smoke
         run: |
           sed -i 's/^OPERATOR_TOTP_SECRET=.*/OPERATOR_TOTP_SECRET=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ/' deployment/telnyx/.env

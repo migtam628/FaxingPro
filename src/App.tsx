@@ -7,13 +7,14 @@ import { Activity, Archive, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight,
   UploadCloud, Users, X, AlertTriangle, RefreshCw, Eye, Wifi,
   type LucideIcon } from 'lucide-react';
 import SetupWizard from './SetupWizard';
+import TeamMembers from './TeamMembers';
 import ApiTokenManager from './ApiTokenManager';
 import NotificationCenter from './NotificationCenter';
 import ReconciliationPanel from './ReconciliationPanel';
 import RetentionPreview from './RetentionPreview';
 import ContactsManager from './ContactsManager';
 import PublicLanding from './PublicLanding';
-import { checkApi, listFaxes, getStats, getSession, createSession, destroySession, getSetup, completeSetup, getBackupStatus, getSecurityStatus, revokeAllSessions, setFaxFlag, getFaxEvents, getDailyActivity, downloadFax, submitFax, type DailyActivity, type FaxEvent, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus, type SecurityStatus } from './api';
+import { checkApi, listFaxes, getStats, getSession, createSession, createTeamSession, destroySession, getSetup, completeSetup, getBackupStatus, getSecurityStatus, revokeAllSessions, setFaxFlag, getFaxEvents, getDailyActivity, downloadFax, submitFax, type DailyActivity, type FaxEvent, type Health, type FaxStats, type ServerFax, type SetupState, type BackupStatus, type SecurityStatus } from './api';
 import type { Fax, FaxStatus, Page } from './types';
 
 const sections: {group:string;items:{page:Page;label:string;icon:LucideIcon}[]}[] = [
@@ -82,6 +83,10 @@ export default function App(){
     return window.location.origin;
   });
   const [apiToken,setApiToken]=useState('');
+  const [signInKind,setSignInKind]=useState<'owner'|'team'>('owner');
+  const [teamEmail,setTeamEmail]=useState('');
+  const [teamPassword,setTeamPassword]=useState('');
+  const [identity,setIdentity]=useState<import('./api').MemberIdentity|null>(null);
   const [oneTimeCode,setOneTimeCode]=useState('');
   const [mfaRequired,setMfaRequired]=useState(false);
   const [health,setHealth]=useState<Health|null>(null);
@@ -109,7 +114,7 @@ export default function App(){
     let cancelled=false;
     (async()=>{
       const session=await getSession(endpoint);
-      if(!cancelled)setMfaRequired(!!session.mfaRequired);
+      if(!cancelled){setMfaRequired(!!session.mfaRequired);setIdentity(session.identity||null);}
       if(!session.authenticated){
         if(!cancelled)setBoot('signin');
         return;
@@ -200,7 +205,7 @@ export default function App(){
     if(!window.confirm('Revoke every active FaxingPro session, including this browser? You will need the API_TOKEN to sign in again.'))return;
     try{
       await revokeAllSessions(apiEndpoint);
-      setBoot('signin');setApiToken('');setOneTimeCode('');setHealth(null);setLiveFaxes(null);
+      setBoot('signin');setApiToken('');setTeamPassword('');setOneTimeCode('');setIdentity(null);setHealth(null);setLiveFaxes(null);
       setStats(null);setSecurityStatus(null);setSecurityError('');
     }catch(error){setSecurityError(error instanceof Error?error.message:'Session revocation failed');}
   }
@@ -290,10 +295,13 @@ export default function App(){
     setTesting(true);setSetupError('');
     try{
       const status=await checkApi(endpoint);
-      const session=apiToken.trim()?await createSession(endpoint,apiToken.trim(),oneTimeCode.trim()):await getSession(endpoint);
+      const session=signInKind==='team'
+        ?await createTeamSession(endpoint,teamEmail.trim(),teamPassword,oneTimeCode.trim())
+        :apiToken.trim()?await createSession(endpoint,apiToken.trim(),oneTimeCode.trim()):await getSession(endpoint);
       if(!session.authenticated)throw Error('Enter a valid API_TOKEN from your VPS.');
       const [details,items,counters]=await Promise.all([getSetup(endpoint),listFaxes(endpoint),getStats(endpoint)]);
-      setApiToken('');setOneTimeCode('');setMfaRequired(!!session.mfaRequired);
+      setApiToken('');setTeamPassword('');setOneTimeCode('');setMfaRequired(!!session.mfaRequired);
+      setIdentity(session.identity||null);
       setSetupInfo(details);setHealth(status);setLiveFaxes(items.map(serverToFax));setStats(counters);
       setBoot(details.complete?'ready':'setup');
       setToast('Connected securely. Your session is retained for seven days.');
@@ -320,7 +328,7 @@ export default function App(){
   async function signOut(){
     try{await destroySession(apiEndpoint);}
     catch(error){setToast(error instanceof Error?error.message:'Unable to sign out');return;}
-    setApiToken('');setOneTimeCode('');setHealth(null);setLiveFaxes(null);setStats(null);
+    setApiToken('');setTeamPassword('');setOneTimeCode('');setIdentity(null);setHealth(null);setLiveFaxes(null);setStats(null);
     setBoot('signin');setSetupError('');
   }
   async function sendFax(){
@@ -343,6 +351,9 @@ export default function App(){
   if(boot!=='ready'){
     return <SetupWizard mode={boot} endpoint={apiEndpoint}
       mfaRequired={mfaRequired} otp={oneTimeCode} setOtp={setOneTimeCode}
+      signInKind={signInKind} setSignInKind={setSignInKind}
+      teamEmail={teamEmail} setTeamEmail={setTeamEmail}
+      teamPassword={teamPassword} setTeamPassword={setTeamPassword}
       token={apiToken} setToken={setApiToken} setup={setupInfo} working={testing}
       error={setupError} onConnect={testConnection} onReload={recheckSetup}
       onRetry={()=>{setBoot('checking');setSetupError('');setBootRetry(n=>n+1);}}
@@ -353,8 +364,8 @@ export default function App(){
     <aside className={'sidebar '+(mobileNav?'sidebar-open':'')}>
       <div className="brand"><span className="brand-mark"><Printer size={22}/></span><div><strong>FaxingPro</strong><small>ATLAS WORKSPACE</small></div><button className="mobile-close" aria-label="Close menu" onClick={()=>setMobileNav(false)}><X size={18}/></button></div>
       <div className="workspace-switch"><span className="workspace-avatar">FP</span><div><strong>{setupInfo?.workspaceName||'FaxingPro'}</strong><small>Telnyx API connected</small></div></div>
-      <div className="nav-groups">{sections.map(section=><div className="nav-group" key={section.group}><div className="nav-heading">{section.group}</div>{section.items.map(({page:p,label,icon:Icon})=><button key={p} className={'nav-item '+(page===p || (page==='viewer'&&p==='documents')?'nav-active':'')} onClick={()=>navigate(p)}><Icon size={18}/><span>{label}</span>{p==='inbox'&&faxes.some(f=>f.unread)&&<span className="nav-count">{faxes.filter(f=>f.unread).length}</span>}</button>)}</div>)}</div>
-      <div className="sidebar-bottom"><div className="support"><LifeBuoy size={17}/><span>Help & Support</span><ArrowUpRight size={14}/></div><div className="profile"><span className="profile-avatar">FP</span><div><strong>Local Operator</strong><small>Workspace administrator</small></div><MoreHorizontal size={17}/></div></div>
+      <div className="nav-groups">{sections.map(section=><div className="nav-group" key={section.group}><div className="nav-heading">{section.group}</div>{section.items.filter(item=>identity?.role==='admin'||(!['team','security','backups','settings','server','sip','numbers'].includes(item.page)&&!(identity?.role==='viewer'&&item.page==='compose'))).map(({page:p,label,icon:Icon})=><button key={p} className={'nav-item '+(page===p || (page==='viewer'&&p==='documents')?'nav-active':'')} onClick={()=>navigate(p)}><Icon size={18}/><span>{label}</span>{p==='inbox'&&faxes.some(f=>f.unread)&&<span className="nav-count">{faxes.filter(f=>f.unread).length}</span>}</button>)}</div>)}</div>
+      <div className="sidebar-bottom"><div className="support"><LifeBuoy size={17}/><span>Help & Support</span><ArrowUpRight size={14}/></div><div className="profile"><span className="profile-avatar">FP</span><div><strong>{identity?.name||'Owner'}</strong><small>{identity?.role||'admin'} · Private session</small></div><MoreHorizontal size={17}/></div></div>
     </aside>
     {mobileNav&&<button className="nav-backdrop" aria-label="Close sidebar" onClick={()=>setMobileNav(false)}/>}
     <div className="main-area">
@@ -362,7 +373,7 @@ export default function App(){
               onBackup={()=>navigate('backups')}/><span className="top-avatar">FP</span></div></header>
       <main className="content">
       {page==='dashboard'&&<>
-        <div className="page-heading"><div><span className="eyebrow">{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).toUpperCase()}</span><h1>Good morning <span className="wave">✳</span></h1><p>Here's what's happening across your fax workspace.</p></div><button className="btn primary" onClick={()=>navigate('compose')}><Plus size={18}/> New Fax</button></div>
+        <div className="page-heading"><div><span className="eyebrow">{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).toUpperCase()}</span><h1>Good morning <span className="wave">✳</span></h1><p>Here's what's happening across your fax workspace.</p></div>{identity?.role!=='viewer'&&<button className="btn primary" onClick={()=>navigate('compose')}><Plus size={18}/> New Fax</button>}</div>
         <div className="notice"><ShieldCheck size={19}/><div><strong>Live Telnyx connection</strong><span>All records and counts are read from your private VPS database. Delivery is confirmed only by Telnyx.</span></div><button onClick={()=>navigate('settings')}>Configure server <ArrowRight size={15}/></button></div>
         <div className="kpi-grid">{[
           {label:'Received Faxes',num:String(stats?.received??0),delta:'Actual records',icon:ArrowDownLeft,kind:'green'},
@@ -455,7 +466,8 @@ export default function App(){
           <p className="field-help">Counts are based on original record creation date, not confirmation date. Times shown in UTC; incoming and outgoing fax records only.</p>
         </Panel>
         <Panel title="Recent transmissions">{table(faxes.slice(0,10),false)}</Panel></>}
-      {page==='team'&&<><div className="page-heading"><div><span className="eyebrow">ACCESS MANAGEMENT</span><h1>Team Members</h1><p>Manage team roles and workspace permissions.</p></div><button className="btn primary" onClick={()=>setToast('Team invitations are not yet available. This installation uses a single operator.')}><Users size={16}/> Invite member</button></div><Panel title="Workspace access"><div className="settings-card"><Users size={22}/><div><strong>Local operator</strong><p>Administrator · Secure session</p></div><span className="status status-received">Active</span></div></Panel></>}
+      {page==='team'&&<TeamMembers endpoint={apiEndpoint} administrator={identity?.role==='admin'}
+        currentUserId={identity?.id||null}/>}
       {(page==='settings'||page==='server'||page==='sip'||page==='security'||page==='backups')&&<>
         <div className="page-heading"><div><span className="eyebrow">SYSTEM ADMINISTRATION</span><h1>{titleFor(page)}</h1><p>Configure your self-hosted FaxingPro installation.</p></div></div>
         <div className="settings-layout"><div className="settings-menu">{[['General','settings'],['API Connection','settings'],['Server Health','server'],['SIP & T.38','sip'],['Security','security'],['Backup & Recovery','backups']].map(([name,target])=><button className={(page===target&&(page!=='settings'||settingsTab===name))?'selected':''} key={name} onClick={()=>{setPage(target as Page);setSettingsTab(name);}}>{name}<ChevronRight size={15}/></button>)}</div><div className="settings-content">
