@@ -47,6 +47,7 @@ jobs:
           test -s docs/BACKUP_RECOVERY.md
           test -s docs/GOOGLE_DRIVE_BACKUPS.md
           test -s docs/BACKUP_HEALTH_MONITOR.md
+          test -s docs/RELEASE_INTEGRITY.md
       - name: Build web app
         run: npm run build
 
@@ -98,6 +99,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Download installers
         uses: actions/download-artifact@v4
         with:
@@ -141,6 +145,7 @@ jobs:
               Path("docs/MASTER_BEARER_LOCKDOWN.md"),
               Path("docs/NAMED_TEAM_ACCOUNTS.md"),
               Path("docs/ATTRIBUTED_AUDIT.md"),
+              Path("docs/RELEASE_INTEGRITY.md"),
               Path("docs/STAGING_RECOVERY_REHEARSAL.md"),
           ]
           with ZipFile("release-files/FaxingPro-Setup-Docs.zip", "w", ZIP_DEFLATED) as output:
@@ -159,6 +164,8 @@ jobs:
           test "$(wc -c < release-files/RELEASE_NOTES.md)" -gt 2500
           printf '\n---\n**Security:** Keep private credentials off GitHub and out of tickets. Fax sending is disabled on first install. Named accounts with TOTP and roles are available; comprehensive audit, full MFA enrollment and certified disaster recovery remain unfinished.\n' >> release-files/RELEASE_NOTES.md
           (cd release-files && sha256sum *.exe *.dmg *.AppImage *.deb faxingpro-install.sh README.md FaxingPro-Setup-Docs.zip RELEASE_NOTES.md > SHA256SUMS)
+          # Fail before publication if any platform installer or documentation asset is absent, extra, empty or altered.
+          node scripts/verify-release-assets.mjs release-files
           files+=(release-files/faxingpro-install.sh release-files/README.md release-files/FaxingPro-Setup-Docs.zip release-files/RELEASE_NOTES.md release-files/SHA256SUMS)
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tag="${GITHUB_REF#refs/tags/}"
@@ -176,7 +183,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Download published documentation assets
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download and verify ALL published release assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -189,9 +200,9 @@ jobs:
             tag="v0.1.0-preview.${GITHUB_RUN_NUMBER}"
           fi
           mkdir -p verify
-          for filename in SHA256SUMS faxingpro-install.sh README.md FaxingPro-Setup-Docs.zip RELEASE_NOTES.md; do
-            gh release download "$tag" --pattern "$filename" --dir verify
-          done
+          gh release download "$tag" --dir verify
+          # Independently verify every published Windows, macOS and Linux binary, not only docs.
+          node scripts/verify-release-assets.mjs verify
           cd verify
           grep -E '  (SHA256SUMS|faxingpro-install.sh|README.md|FaxingPro-Setup-Docs.zip|RELEASE_NOTES.md)$' SHA256SUMS > doc-checksums.txt
           test "$(wc -l < doc-checksums.txt)" -eq 4
@@ -213,6 +224,7 @@ jobs:
                   "docs/MASTER_BEARER_LOCKDOWN.md",
                   "docs/NAMED_TEAM_ACCOUNTS.md",
                   "docs/ATTRIBUTED_AUDIT.md",
+                  "docs/RELEASE_INTEGRITY.md",
               }
               assert required.issubset(names), required - names
               assert archive.testzip() is None

@@ -276,7 +276,7 @@ Visit [GitHub Releases](https://github.com/migtam628/FaxingPro/releases) for pre
 
 On first launch, enter your **existing self-hosted HTTPS FaxingPro server origin**, such as `https://fax.yourdomain.com`. The Electron shell opens that website in a sandboxed Chromium window. Its session cookies belong to your HTTPS server. The chosen URL is remembered locally (not the operator token); access can be revoked from ATLAS → Security.
 
-The desktop installer **does not run PostgreSQL, Telnyx, or a fax gateway by itself**. Local `file://` authentication is not used. Preview installers are currently unsigned/unnotarized and automated updates are not configured; follow your OS security procedures and verify the release source.
+The desktop installer **does not run PostgreSQL, Telnyx, or a fax gateway by itself**. Local `file://` authentication is not used. Preview installers are currently unsigned/unnotarized and automated updates are not configured; follow your OS security procedures and verify the release source. **Release CI now downloads and SHA-256 verifies all five published desktop installers and four supporting assets**, in addition to validating the documentation ZIP and installer script. This is file-integrity checking, **not** code signing, notarization, independent provenance, native OS install testing or production approval. See [release integrity and remaining gates](docs/RELEASE_INTEGRITY.md).
 
 You can build a local development copy with:
 
@@ -309,7 +309,7 @@ unset FAXINGPRO_READ_TOKEN
 
 Read-only tokens **cannot** exchange themselves for browser operator sessions, download encrypted fax PDFs, send/retry fax jobs, change backups, manage sessions, or create/revoke other tokens. An integration token passed in an explicit `Authorization` header cannot inherit administrator authority from a browser cookie. Expired and revoked tokens stop working immediately; listing tokens never returns their secret.
 
-**Rotating the master `API_TOKEN` still requires VPS administration**, and recreating the API container to load the new environment value. The UI currently manages *integration tokens*, not the original master administrator token. No named user accounts, role-based privileges, or scoped write/sending tokens are implemented. Optional single-operator TOTP and master bearer lockdown require deliberate configuration. For detailed controls and safe CLI rotation, see [Security & Sessions](docs/SECURITY_SESSIONS.md).
+**Rotating the master `API_TOKEN` still requires VPS administration**, and recreating the API container to load the new environment value. The UI currently manages *integration tokens*, not the original master administrator token. Named team accounts and server-enforced Viewer/Operator/Administrator roles are now implemented as an initial milestone, but individual self-service, full audit coverage, and scoped write/sending integration tokens are not. Optional single-operator TOTP and master bearer lockdown require deliberate configuration. For detailed controls and safe CLI rotation, see [Security & Sessions](docs/SECURITY_SESSIONS.md).
 
 ## Backup & Recovery
 
@@ -342,7 +342,7 @@ npm run dev
 | --- | --- |
 | [Deploy ATLAS Website](.github/workflows/pages.yml) | Build/test static product landing page and publish GitHub Pages |
 | [Validate Telnyx Fax Backend](.github/workflows/telnyx-ci.yml) | Node/API and signed webhook tests, real age-encrypted backup, synthetic database/PDF restore drill, mocked Google Drive checks |
-| [Build and Release](.github/workflows/release.yml) | Run tests; build Windows, macOS and Linux installers; publish preview release assets |
+| [Build and Release](.github/workflows/release.yml) | Run tests; build Windows, macOS and Linux installers; verify all ten release assets before and after publishing preview releases |
 
 Deployment to your VPS remains **manual** and isolated from your other services: pushing to GitHub does not automatically restart your production FaxingPro containers.
 
@@ -366,6 +366,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 - [PostgreSQL and encrypted document recovery](docs/BACKUP_RECOVERY.md)
 - [Google Drive setup](docs/GOOGLE_DRIVE_BACKUPS.md)
 - [Developer environment](docs/DEVELOPMENT.md)
+- [Release asset integrity checks and remaining signing requirements](docs/RELEASE_INTEGRITY.md)
 - [System architecture](docs/ARCHITECTURE.md)
 - [Published releases](https://github.com/migtam628/FaxingPro/releases)
 
