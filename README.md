@@ -14,6 +14,8 @@
 
 *Illustrative ATLAS design direction; the image is not a screenshot of real fax activity. The production interface displays only records received from the server.*
 
+**Linux desktop packaging acceptance (CI gate under validation):** The release workflow now runs an isolated Ubuntu DEB install/start/remove smoke check and AppImage extraction check before uploading Linux installers. This is not production deployment or complete GUI testing; results must be confirmed in GitHub Actions. See [release integrity and Linux smoke limitations](docs/RELEASE_INTEGRITY.md).
+
 ## Features
 
 | Capability | Status | Implementation |
