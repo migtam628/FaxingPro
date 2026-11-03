@@ -18,7 +18,7 @@ chmod +x "${images[0]}"
 test -x "$tmp/squashfs-root/AppRun"
 # The test runner is disposable. apt install/remove must never run on the VPS.
 sudo apt-get update -qq
-sudo apt-get install -y -qq xvfb "${debs[0]}"
+sudo apt-get install -y -qq xvfb "./${debs[0]}"
 command -v faxingpro
 set +e
 timeout 20s xvfb-run -a faxingpro >"$tmp/launch.log" 2>&1
