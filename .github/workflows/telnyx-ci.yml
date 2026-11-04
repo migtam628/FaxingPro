@@ -51,6 +51,9 @@ jobs:
         run: |
           bash -n scripts/faxingpro-backup.sh
           bash -n scripts/install-vps.sh
+          bash -n scripts/faxingpro-deploy-guard.sh
+          bash scripts/faxingpro-deploy-guard.sh --self-test
+          bash scripts/faxingpro-deploy-guard.sh --help >/dev/null
           bash scripts/install-vps.sh --self-test
           bash scripts/install-vps.sh --help >/dev/null
           bash -n scripts/faxingpro-verify-backup.sh
