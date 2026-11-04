@@ -14,6 +14,10 @@
 
 *Illustrative ATLAS design direction; the image is not a screenshot of real fax activity. The production interface displays only records received from the server.*
 
+**Linux desktop packaging acceptance (CI gate under validation):** The release workflow now runs an isolated Ubuntu DEB install/start/remove smoke check and AppImage extraction check before uploading Linux installers. This is not production deployment or complete GUI testing; results must be confirmed in GitHub Actions. See [release integrity and Linux smoke limitations](docs/RELEASE_INTEGRITY.md).
+
+**Known Linux CI blocker (November 3):** the installed DEB's Chromium sandbox helper failed ownership/mode validation and Electron exited 133. The acceptance gate remains failing; the smoke test now reports the required metadata explicitly. No sandbox bypass or production host change is permitted. See [release integrity](docs/RELEASE_INTEGRITY.md).
+
 ## Features
 
 | Capability | Status | Implementation |
