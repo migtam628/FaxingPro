@@ -20,6 +20,20 @@ test -x "$tmp/squashfs-root/AppRun"
 sudo apt-get update -qq
 sudo apt-get install -y -qq xvfb "./${debs[0]}"
 command -v faxingpro
+# Fail closed on the actual installed package: Chromium requires its setuid
+# sandbox helper to be owned by root with mode 4755. Never bypass the sandbox.
+sandbox=/opt/FaxingPro/chrome-sandbox
+if [[ ! -f "$sandbox" ]]; then
+  echo "ERROR: installed Electron chrome-sandbox helper is missing" >&2
+  exit 1
+fi
+sandbox_owner=$(stat -c '%u:%g' "$sandbox")
+sandbox_mode=$(stat -c '%a' "$sandbox")
+if [[ "$sandbox_owner" != "0:0" || "$sandbox_mode" != "4755" ]]; then
+  echo "ERROR: unsafe chrome-sandbox metadata: owner=$sandbox_owner mode=$sandbox_mode (required 0:0 / 4755)" >&2
+  echo "Fix the DEB packaging/install metadata; do not use --no-sandbox or skip GUI validation." >&2
+  exit 1
+fi
 set +e
 timeout 20s xvfb-run -a faxingpro >"$tmp/launch.log" 2>&1
 rc=$?
