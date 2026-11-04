@@ -152,15 +152,21 @@ New installations in the default directory:
 
 ~~~bash
 sudo bash /opt/faxingpro/scripts/install-vps.sh --status
+sudo bash /opt/faxingpro/scripts/faxingpro-deploy-guard.sh --check --dir /opt/faxingpro
+# During an approved maintenance window:
 sudo bash /opt/faxingpro/scripts/install-vps.sh --update
 ~~~
 
-The `--update` command fast-forwards the existing Git checkout and rebuilds **only** the web and API services. It does **not** replace `.env`, erase PostgreSQL or PDF volumes, delete backups, or change other deployed websites. Take an encrypted backup and verify its offsite copy before major upgrades.
+The `--update` command now delegates to a [guarded preflight and cutover](docs/GUARDED_VPS_UPDATES.md). It **refuses** to deploy if an active/unhealthy backup, recent unfinished outbound fax submission, missing database/document volume, Git divergence, low Docker disk space or failed baseline API health is detected. On approval it fast-forwards and rebuilds **only** API/web. It does not reset `.env`, erase PostgreSQL or PDF volumes, delete backups or change other websites. This is a maintenance-window action with possible brief downtime and **no automatic rollback**.
 
 For an older installation such as `/root/FaxingPro`, pass the actual existing path; **do not run a fresh install**:
 
 ~~~bash
-sudo bash /root/FaxingPro/scripts/install-vps.sh --update --dir /root/FaxingPro
+cd /root/FaxingPro
+git pull --ff-only
+sudo bash scripts/faxingpro-deploy-guard.sh --check
+# After backup and login preflight passes, during a maintenance window:
+sudo bash scripts/faxingpro-deploy-guard.sh --apply
 ~~~
 
 The script also supports `--check` (read-only host checks), `--self-test` (local input-guard tests), and `--port 9092` on *new* installs if 8092 is already in use. For diagnostics:
@@ -362,6 +368,7 @@ Deployment to your VPS remains **manual** and isolated from your other services:
 - [Security and operator sessions](docs/SECURITY_SESSIONS.md)
 - [Opt-in master bearer lockdown](docs/MASTER_BEARER_LOCKDOWN.md)
 - [Named team accounts and role permissions](docs/NAMED_TEAM_ACCOUNTS.md)
+- [Guarded existing-VPS updates](docs/GUARDED_VPS_UPDATES.md)
 - [Attributed security and workspace audit](docs/ATTRIBUTED_AUDIT.md)
 - [PostgreSQL and encrypted document recovery](docs/BACKUP_RECOVERY.md)
 - [Google Drive setup](docs/GOOGLE_DRIVE_BACKUPS.md)

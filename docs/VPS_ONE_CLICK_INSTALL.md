@@ -48,12 +48,14 @@ After a normal fresh install under `/opt/faxingpro`:
 
 ~~~bash
 sudo bash /opt/faxingpro/scripts/install-vps.sh --status
+sudo bash /opt/faxingpro/scripts/faxingpro-deploy-guard.sh --check --dir /opt/faxingpro
+# Explicit maintenance-window update after preflight:
 sudo bash /opt/faxingpro/scripts/install-vps.sh --update
 ~~~
 
-The update pulls the latest `main` fast-forward and rebuilds **only the web and API**. It does not replace `.env`, drop PostgreSQL, delete fax documents, or restart other Docker projects. It preserves an installer-created Caddy container by using the recorded install profile.
+The existing-installation update now uses the [guarded VPS updater](GUARDED_VPS_UPDATES.md), which checks verified local/Google Drive backups, both persistent volumes, recent outbound activity, disk space, Git and API health **before** changing anything. An approved update pulls the latest `main` fast-forward and rebuilds **only API and web**, without replacing `.env`, restarting PostgreSQL, deleting fax documents, or altering the existing HTTPS proxy. A brief interruption is possible; there is no automatic rollback.
 
-If you originally installed the repo in another directory, pass `--dir /your/path`. For a pre-existing manually deployed FaxingPro stack, `--update --dir /existing/FaxingPro` updates only API/web, without creating any new proxy. **Back up the database and encrypted PDFs before major application updates.**
+If you originally installed the repo in another directory, pass `--dir /your/path`. For a pre-existing manually deployed FaxingPro stack, `--update --dir /existing/FaxingPro` updates only API/web, without creating any new proxy. **Configure and verify local encrypted backups plus Google Drive offsite checks before updating.** Missing backup monitoring is deliberately a blocking preflight failure; see [guarded update instructions](GUARDED_VPS_UPDATES.md).
 
 Check the host environment safely:
 
