@@ -16,6 +16,7 @@ FaxingPro ATLAS guided Ubuntu VPS installer
   sudo bash install-vps.sh
   sudo bash install-vps.sh --domain fax.example.com --proxy existing
   sudo bash install-vps.sh --update --dir /opt/faxingpro
+  sudo bash faxingpro-deploy-guard.sh --check --dir /opt/faxingpro
 Options: --domain HOST --proxy auto|existing|none --port PORT --dir ABS_PATH
          --yes --check --status --update --self-test --help
 Noninteractive: --yes --domain ... and FAXINGPRO_TELNYX_PUBLIC_KEY must be set.
@@ -96,14 +97,13 @@ fi
 [[ $ID == ubuntu ]] || fail 'Automated installation is supported on Ubuntu only'
 if [[ $MODE == update ]];then
  [[ -f $ENVFILE && -d $DIR/.git ]] || fail "Existing checkout not found at $DIR"
- ready || fail 'Docker/Compose missing'
- git -C "$DIR" pull --ff-only
- dc config --quiet
- dc up -d --no-deps --build api web
- dc restart web
- health
- echo 'Update complete; .env, PostgreSQL, PDF volumes, TLS and backups preserved.'
- exit 0
+ [[ -r "$DIR/scripts/faxingpro-deploy-guard.sh" ]] ||
+   fail 'Deployment guard missing. Update source checkout first, then use guarded updater.'
+ # The guarded updater checks backups, volumes, recent outbound fax activity,
+ # existing service health and disk space BEFORE any pull/build/recreation.
+ args=(--apply --dir "$DIR")
+ if $YES;then args+=(--yes);fi
+ exec /usr/bin/bash "$DIR/scripts/faxingpro-deploy-guard.sh" "${args[@]}"
 fi
 for prog in git curl openssl;do
  if ! command -v "$prog" >/dev/null;then
