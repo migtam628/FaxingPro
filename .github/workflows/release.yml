@@ -146,6 +146,7 @@ jobs:
               Path("docs/NAMED_TEAM_ACCOUNTS.md"),
               Path("docs/ATTRIBUTED_AUDIT.md"),
               Path("docs/RELEASE_INTEGRITY.md"),
+              Path("docs/GUARDED_VPS_UPDATES.md"),
               Path("docs/STAGING_RECOVERY_REHEARSAL.md"),
           ]
           with ZipFile("release-files/FaxingPro-Setup-Docs.zip", "w", ZIP_DEFLATED) as output:
@@ -225,6 +226,7 @@ jobs:
                   "docs/NAMED_TEAM_ACCOUNTS.md",
                   "docs/ATTRIBUTED_AUDIT.md",
                   "docs/RELEASE_INTEGRITY.md",
+                  "docs/GUARDED_VPS_UPDATES.md",
               }
               assert required.issubset(names), required - names
               assert archive.testzip() is None
