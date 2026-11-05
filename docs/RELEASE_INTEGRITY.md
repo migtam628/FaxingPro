@@ -29,3 +29,7 @@ The script reads the expected application version from `package.json` in that ch
 - Stable production distribution remains gated on code signing/notarization, installation tests, release provenance, dependency checks, and the service's independent production acceptance criteria. Preview releases are not production certification.
 
 Related: [desktop release issue #3](https://github.com/migtam628/FaxingPro/issues/3), [release workflow](../.github/workflows/release.yml).
+
+## GitHub Actions token scope
+
+The release workflow uses `permissions: contents: read` by default. Only the `publish` job explicitly requests `contents: write` to create releases. The test, platform packaging, and published-asset verification jobs do not receive write permission from the workflow default. This is a least-privilege hardening change, not proof of artifact signing, notarization, or complete CI isolation. Validate GitHub Actions results before merging; do not grant broader token scopes to work around unrelated packaging failures.
