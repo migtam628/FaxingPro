@@ -14,6 +14,9 @@
 
 *Illustrative ATLAS design direction; the image is not a screenshot of real fax activity. The production interface displays only records received from the server.*
 
+
+**Release CI token permissions:** The workflow defaults to read-only repository access for tests and desktop packaging. Only the release-publication job requests `contents: write`. This reduces token privileges but does not establish signed artifacts or production readiness; see [release integrity](docs/RELEASE_INTEGRITY.md).
+
 ## Features
 
 | Capability | Status | Implementation |
