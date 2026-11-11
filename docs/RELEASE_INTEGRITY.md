@@ -33,3 +33,7 @@ Related: [desktop release issue #3](https://github.com/migtam628/FaxingPro/issue
 ## GitHub Actions token scope
 
 The release workflow uses `permissions: contents: read` by default. Only the `publish` job explicitly requests `contents: write` to create releases. The test, platform packaging, and published-asset verification jobs do not receive write permission from the workflow default. This is a least-privilege hardening change, not proof of artifact signing, notarization, or complete CI isolation. Validate GitHub Actions results before merging; do not grant broader token scopes to work around unrelated packaging failures.
+
+## Bounded workflow execution
+
+The release workflow caps test, publish and published-asset verification jobs at 20 minutes each, and platform packaging at 45 minutes per runner. GitHub Pages caps build at 20 minutes and deployment at 15 minutes. A timeout fails the relevant job; it must not be interpreted as a passing test or as proof that an already-created release is safe. Inspect failed logs and any partially published preview release before retrying. These limits do not resolve the separate Linux Chromium sandbox packaging failure in PR #15.
