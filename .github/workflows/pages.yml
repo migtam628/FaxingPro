@@ -16,6 +16,7 @@ jobs:
   build:
     name: Build and verify web application
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Configure Pages
@@ -46,6 +47,7 @@ jobs:
 
   deploy:
     name: Publish website
+    timeout-minutes: 15
     needs: build
     runs-on: ubuntu-latest
     permissions:
