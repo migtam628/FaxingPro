@@ -37,3 +37,9 @@ The release workflow uses `permissions: contents: read` by default. Only the `pu
 ## Bounded workflow execution
 
 The release workflow caps test, publish and published-asset verification jobs at 20 minutes each, and platform packaging at 45 minutes per runner. GitHub Pages caps build at 20 minutes and deployment at 15 minutes. A timeout fails the relevant job; it must not be interpreted as a passing test or as proof that an already-created release is safe. Inspect failed logs and any partially published preview release before retrying. These limits do not resolve the separate Linux Chromium sandbox packaging failure in PR #15.
+
+## GitHub Pages built-asset reference gate (pending CI verification)
+
+The Pages workflow now parses the generated `dist/index.html` and requires at least one script or stylesheet/module-preload reference. Every such URL must use the `/FaxingPro/assets/` prefix and resolve to an existing, nonempty file inside `dist/assets`. Unexpected prefixes, missing files, empty files, and parent-directory path segments fail the build before deployment. This catches broken generated entrypoint references without contacting the production VPS or changing any deployed fax data.
+
+This check does **not** test browser execution, dynamic imports, application API connectivity, all nested CSS resources, or actual GitHub Pages availability. The workflow and deployed website must still pass GitHub Actions and live checks; do not claim a successful deployment based only on the presence of this gate.
