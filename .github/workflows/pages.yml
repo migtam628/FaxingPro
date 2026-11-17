@@ -39,6 +39,39 @@ jobs:
           test -s dist/index.html
           test -d dist/assets
           grep -q '/FaxingPro/assets/' dist/index.html
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import urlsplit, unquote
+
+          base = "/FaxingPro/"
+          root = Path("dist")
+          html = (root / "index.html").read_text(encoding="utf-8")
+
+          class AssetReferences(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.references = []
+
+              def handle_starttag(self, tag, attrs):
+                  attributes = dict(attrs)
+                  if tag == "script" and "src" in attributes:
+                      self.references.append(attributes["src"])
+                  if tag == "link" and attributes.get("rel") in ("stylesheet", "modulepreload") and "href" in attributes:
+                      self.references.append(attributes["href"])
+
+          parser = AssetReferences()
+          parser.feed(html)
+          assert parser.references, "No script or stylesheet references found in built HTML"
+          for reference in parser.references:
+              path = unquote(urlsplit(reference).path)
+              assert path.startswith(base + "assets/"), f"Unexpected asset URL: {reference}"
+              relative = Path(path.removeprefix(base))
+              assert ".." not in relative.parts, f"Unsafe asset path: {reference}"
+              target = root / relative
+              assert target.is_file() and target.stat().st_size > 0, f"Missing or empty asset: {reference}"
+          print(f"Verified {len(parser.references)} built script/style asset references")
+          PY
           touch dist/.nojekyll
       - name: Upload compiled site
         uses: actions/upload-pages-artifact@v4
