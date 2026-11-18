@@ -64,7 +64,11 @@ jobs:
           parser.feed(html)
           assert parser.references, "No script or stylesheet references found in built HTML"
           for reference in parser.references:
-              path = unquote(urlsplit(reference).path)
+              parsed = urlsplit(reference)
+              assert not parsed.scheme and not parsed.netloc, f"External asset URL: {reference}"
+              assert not parsed.query and not parsed.fragment, f"Unexpected asset URL suffix: {reference}"
+              path = unquote(parsed.path)
+              assert "%" not in path and "\\" not in path, f"Ambiguous asset URL: {reference}"
               assert path.startswith(base + "assets/"), f"Unexpected asset URL: {reference}"
               relative = Path(path.removeprefix(base))
               assert ".." not in relative.parts, f"Unsafe asset path: {reference}"
