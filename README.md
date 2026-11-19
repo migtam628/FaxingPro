@@ -15,7 +15,7 @@
 *Illustrative ATLAS design direction; the image is not a screenshot of real fax activity. The production interface displays only records received from the server.*
 
 
-**GitHub Pages asset integrity gate (extended validation pending CI):** The Pages build now checks that script, stylesheet and module-preload URLs in the compiled HTML resolve to nonempty files under the expected `/FaxingPro/assets/` prefix. The pending extension also rejects external origins and ambiguous asset URLs. This is a build-time reference check, not proof that the deployed site is reachable or that all runtime requests work. See [release integrity](docs/RELEASE_INTEGRITY.md).
+**GitHub Pages asset integrity gate:** The Pages build now checks that script, stylesheet and module-preload URLs in the compiled HTML resolve to nonempty files under the expected `/FaxingPro/assets/` prefix. The validator also rejects external origins and ambiguous asset URLs. A further pending CI hardening check rejects encoded URLs and control characters, with negative-case checks for malformed URLs. This is a build-time reference check, not proof that the deployed site is reachable or that all runtime requests work. See [release integrity](docs/RELEASE_INTEGRITY.md).
 
 **Bounded CI execution:** Release and Pages jobs have explicit timeouts so stalled builds, package tests, and publication steps fail rather than running indefinitely. These are operational limits, not evidence that installers or releases passed validation. See [release integrity](docs/RELEASE_INTEGRITY.md).
 
