@@ -64,6 +64,8 @@ jobs:
           parser.feed(html)
           assert parser.references, "No script or stylesheet references found in built HTML"
           for reference in parser.references:
+              assert reference == reference.strip() and not any(ord(ch) < 32 or ord(ch) == 127 for ch in reference), f"Whitespace or control character in asset URL: {reference!r}"
+              assert "%" not in reference, f"Encoded asset URL is not allowed: {reference!r}"
               parsed = urlsplit(reference)
               assert not parsed.scheme and not parsed.netloc, f"External asset URL: {reference}"
               assert not parsed.query and not parsed.fragment, f"Unexpected asset URL suffix: {reference}"
