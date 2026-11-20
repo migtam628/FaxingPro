@@ -63,7 +63,9 @@ jobs:
           parser = AssetReferences()
           parser.feed(html)
           assert parser.references, "No script or stylesheet references found in built HTML"
-          for reference in parser.references:
+          def validate_reference(reference):
+              assert reference == reference.strip() and not any(ord(ch) < 32 or ord(ch) == 127 for ch in reference), f"Whitespace or control character in asset URL: {reference!r}"
+              assert "%" not in reference, f"Encoded asset URL is not allowed: {reference!r}"
               parsed = urlsplit(reference)
               assert not parsed.scheme and not parsed.netloc, f"External asset URL: {reference}"
               assert not parsed.query and not parsed.fragment, f"Unexpected asset URL suffix: {reference}"
@@ -74,6 +76,27 @@ jobs:
               assert ".." not in relative.parts, f"Unsafe asset path: {reference}"
               target = root / relative
               assert target.is_file() and target.stat().st_size > 0, f"Missing or empty asset: {reference}"
+
+          # Negative cases must fail before a deployment can be considered valid.
+          invalid = (
+              "https://evil.example/FaxingPro/assets/app.js",
+              "//evil.example/FaxingPro/assets/app.js",
+              "/FaxingPro/assets/app.js?x=1",
+              "/FaxingPro/assets/app.js#fragment",
+              "/FaxingPro/assets/%61pp.js",
+              "/FaxingPro/assets/app.js\\n",
+              " /FaxingPro/assets/app.js",
+              "/FaxingPro/assets/../app.js",
+          )
+          for candidate in invalid:
+              try:
+                  validate_reference(candidate)
+              except AssertionError:
+                  continue
+              raise AssertionError(f"Invalid asset URL accepted: {candidate!r}")
+
+          for reference in parser.references:
+              validate_reference(reference)
           print(f"Verified {len(parser.references)} built script/style asset references")
           PY
           touch dist/.nojekyll
