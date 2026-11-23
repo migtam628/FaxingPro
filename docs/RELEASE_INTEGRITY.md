@@ -34,6 +34,10 @@ Related: [desktop release issue #3](https://github.com/migtam628/FaxingPro/issue
 
 The release workflow uses `permissions: contents: read` by default. Only the `publish` job explicitly requests `contents: write` to create releases. The test, platform packaging, and published-asset verification jobs do not receive write permission from the workflow default. This is a least-privilege hardening change, not proof of artifact signing, notarization, or complete CI isolation. Validate GitHub Actions results before merging; do not grant broader token scopes to work around unrelated packaging failures.
 
+## Linux DEB Chromium sandbox package gate (pending CI)
+
+The Linux packaging job inspects the built DEB with `dpkg-deb --contents` and fails unless exactly one `chrome-sandbox` helper has root ownership and setuid mode 4755 (`-rwsr-xr-x`). This is an explicit fail-closed check for the known Electron sandbox packaging blocker in issue #3. It does not chmod files, bypass Chromium sandboxing, install the DEB, or claim that the runtime sandbox works. If the current electron-builder package lacks this metadata, the Linux job and release publication will fail until packaging is corrected and an actual sandbox-enabled installation smoke test passes. CI acceptance is pending.
+
 ## Bounded workflow execution
 
 The release workflow caps test, publish and published-asset verification jobs at 20 minutes each, and platform packaging at 45 minutes per runner. GitHub Pages caps build at 20 minutes and deployment at 15 minutes. A timeout fails the relevant job; it must not be interpreted as a passing test or as proof that an already-created release is safe. Inspect failed logs and any partially published preview release before retrying. These limits do not resolve the separate Linux Chromium sandbox packaging failure in PR #15.
