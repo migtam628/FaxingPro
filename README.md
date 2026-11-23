@@ -17,6 +17,8 @@
 
 **GitHub Pages asset integrity gate:** The Pages build now checks that script, stylesheet and module-preload URLs in the compiled HTML resolve to nonempty files under the expected `/FaxingPro/assets/` prefix. The validator also rejects external origins and ambiguous asset URLs. A further pending CI hardening check rejects encoded URLs and control characters, with negative-case checks for malformed URLs. This is a build-time reference check, not proof that the deployed site is reachable or that all runtime requests work. See [release integrity](docs/RELEASE_INTEGRITY.md).
 
+**Linux DEB sandbox metadata gate (pending CI):** The Linux packaging job checks the packaged Chromium `chrome-sandbox` helper is root-owned and has setuid mode 4755 before uploading installers. A failure blocks packaging and publication; this does not repair installer permissions or prove a sandbox-enabled launch. See [release integrity](docs/RELEASE_INTEGRITY.md).
+
 **Bounded CI execution:** Release and Pages jobs have explicit timeouts so stalled builds, package tests, and publication steps fail rather than running indefinitely. These are operational limits, not evidence that installers or releases passed validation. See [release integrity](docs/RELEASE_INTEGRITY.md).
 
 **Release CI token permissions:** The workflow defaults to read-only repository access for tests and desktop packaging. Only the release-publication job requests `contents: write`. This reduces token privileges but does not establish signed artifacts or production readiness; see [release integrity](docs/RELEASE_INTEGRITY.md).

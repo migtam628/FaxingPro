@@ -80,6 +80,28 @@ jobs:
         run: npm run build
       - name: Create desktop installers
         run: npx electron-builder ${{ matrix.flags }} --publish never
+      - name: Validate Linux DEB Chromium sandbox metadata
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          packages=(release/*.deb)
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "Expected exactly one Linux DEB package" >&2
+            exit 1
+          fi
+          dpkg-deb --contents "${packages[0]}" | python3 -c '
+          import re
+          import sys
+          entries = [line.rstrip("\n") for line in sys.stdin if line.rstrip("\n").endswith("/chrome-sandbox")]
+          if len(entries) != 1:
+              sys.exit("Expected exactly one packaged Chromium chrome-sandbox helper")
+          parts = entries[0].split()
+          if len(parts) < 6 or parts[0] != "-rwsr-xr-x" or parts[1] != "root/root":
+              sys.exit("Unsafe Chromium sandbox package metadata: expected root-owned setuid mode 4755")
+          print("PASS: DEB chrome-sandbox metadata is root-owned and mode 4755")
+          '
       - name: Upload packaged applications
         uses: actions/upload-artifact@v4
         with:
